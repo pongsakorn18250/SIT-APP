@@ -1,102 +1,104 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
-  import { ChevronLeft } from "lucide-react";
-// รวมมิตรตัวละครน่ารักๆ (ใช้ API DiceBear)
-const characters = [
-  { id: "felix", name: "Felix", url: "https://api.dicebear.com/7.x/adventurer/svg?seed=Felix" },
-  { id: "coco", name: "Coco", url: "https://api.dicebear.com/7.x/adventurer/svg?seed=Coco" },
-  { id: "zack", name: "Zack", url: "https://api.dicebear.com/7.x/adventurer/svg?seed=Zack" },
-  { id: "mia", name: "Mia", url: "https://api.dicebear.com/7.x/adventurer/svg?seed=Mia" },
-  { id: "abby", name: "Abby", url: "https://api.dicebear.com/7.x/adventurer/svg?seed=Abby" },
-  { id: "max", name: "Max", url: "https://api.dicebear.com/7.x/adventurer/svg?seed=Max" },
+
+// 🎨 รายชื่อ Avatar สไตล์ Adventurer (30 แบบ)
+const AVATARS = [
+  "Felix", "Aneka", "Zoe", "Jack", "Abby", "Liam", 
+  "Molly", "Pepper", "Sugar", "Dusty", "Ginger", "Bandit",
+  "Midnight", "Rocky", "Cuddles", "Snuggles", "Boots", "Whiskers",
+  "Socks", "Tiger", "Shadow", "Coco", "Missy", "Jasper",
+  "Smokey", "Loki", "Sasha", "Oscar", "Sammy", "Misty"
 ];
 
 export default function SelectCharacter() {
   const router = useRouter();
+  const [selectedAvatar, setSelectedAvatar] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [selectedChar, setSelectedChar] = useState(null);
-  const [user, setUser] = useState(null);
- // เพิ่ม ChevronLeft // ใช้ไอคอนสื่อความหมาย
 
-  // 1. เช็ค Login
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) router.push("/register");
-      setUser(user);
-    };
-    getUser();
-  }, [router]);
-
-  // 2. บันทึกตัวละคร
-  const handleSaveCharacter = async () => {
-    if (!user || !selectedChar) return;
+  const handleConfirm = async () => {
+    if (!selectedAvatar) return alert("Please select an avatar!");
     setLoading(true);
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ avatar: selectedChar.url }) // บันทึก URL รูปภาพ
-      .eq("id", user.id);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      // อัปเดต Avatar ลง Database
+      const { error } = await supabase
+        .from("profiles")
+        .update({ avatar: selectedAvatar })
+        .eq("id", user.id);
 
-    if (error) {
-      alert("Error: " + error.message);
-      setLoading(false);
-    } else {
-      // เสร็จแล้วไปเลือกสาขาต่อ
-      router.push("/select-major");
+      if (!error) {
+        // ✅ แก้แล้ว: ไปหน้า Select Major ต่อ
+        router.push("/select-major"); 
+      } else {
+        alert(error.message);
+      }
     }
+    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 text-center">
-      <button 
-        onClick={() => router.push("/register")} // ถอยกลับไปหน้าเลือกตัวละคร
-        className="md:hidden absolute top-6 left-6 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-md text-gray-500 hover:text-sit-primary z-10"
-      >
-        <ChevronLeft size={24} />
-      </button>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-sit-primary mb-2">Choose Your Avatar</h1>
-        <p className="text-gray-500">Pick a character that represents you!</p>
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+      
+      <div className="text-center mb-8 animate-fade-in-up">
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">Choose Your Avatar</h1>
+        <p className="text-gray-500">Pick a character that represents you! (You can change it later)</p>
       </div>
 
-      {/* Grid ตัวละคร */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-6 mb-10 w-full max-w-2xl">
-        {characters.map((char) => (
-          <button
-            key={char.id}
-            onClick={() => setSelectedChar(char)}
-            className={`relative p-4 rounded-3xl transition-all duration-300 flex flex-col items-center gap-2 group border-4 
-              ${selectedChar?.id === char.id 
-                ? "bg-white border-sit-secondary shadow-xl scale-105" 
-                : "bg-white/50 border-transparent hover:scale-105 hover:bg-white"}`}
-          >
-            <img src={char.url} alt={char.name} className="w-24 h-24 rounded-full bg-blue-50" />
-            <span className={`font-bold ${selectedChar?.id === char.id ? "text-sit-primary" : "text-gray-400"}`}>
-              {char.name}
-            </span>
-            
-            {/* วงกลมติ๊กถูก */}
-            {selectedChar?.id === char.id && (
-              <div className="absolute -top-2 -right-2 bg-sit-secondary text-white rounded-full p-1 shadow-md">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-              </div>
-            )}
-          </button>
-        ))}
+      {/* Grid เลือกตัวละคร */}
+      <div className="w-full max-w-5xl h-[60vh] overflow-y-auto custom-scrollbar p-2 mb-8">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
+            {AVATARS.map((seed) => {
+                const avatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${seed}`;
+                const isSelected = selectedAvatar === avatarUrl;
+
+                return (
+                    <button
+                        key={seed}
+                        onClick={() => setSelectedAvatar(avatarUrl)}
+                        className={`
+                            relative group flex flex-col items-center p-3 rounded-2xl border-2 transition-all duration-200
+                            ${isSelected 
+                                ? "border-sit-primary bg-blue-50 scale-105 shadow-xl ring-2 ring-blue-200" 
+                                : "border-transparent bg-white hover:border-gray-200 hover:shadow-md hover:-translate-y-1"
+                            }
+                        `}
+                    >
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden mb-2 bg-gray-100">
+                            <img src={avatarUrl} alt={seed} className="w-full h-full object-cover" />
+                        </div>
+                        <span className={`text-sm font-bold ${isSelected ? "text-sit-primary" : "text-gray-400 group-hover:text-gray-600"}`}>
+                            {seed}
+                        </span>
+                        
+                        {isSelected && (
+                            <div className="absolute top-2 right-2 bg-sit-primary text-white rounded-full p-1 shadow-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+                        )}
+                    </button>
+                );
+            })}
+        </div>
       </div>
 
-      {/* ปุ่ม Confirm */}
+      {/* Confirm Button */}
       <button
-        disabled={!selectedChar || loading}
-        onClick={handleSaveCharacter}
-        className="w-full max-w-xs bg-sit-primary text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-sit-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+        onClick={handleConfirm}
+        disabled={loading || !selectedAvatar}
+        className={`
+            w-full max-w-sm py-4 rounded-xl font-bold text-lg shadow-lg transition-all
+            ${!selectedAvatar 
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed" 
+                : "bg-sit-primary text-white hover:bg-blue-700 hover:shadow-blue-200 active:scale-95"
+            }
+        `}
       >
-        {loading ? "Saving..." : "Confirm Character"}
+        {loading ? "Saving..." : "Next: Select Major →"}
       </button>
 
     </div>
