@@ -2,10 +2,12 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
-import { Trophy, Clock, Star, BookOpen, X, ChevronRight, FileText, Edit3, CheckCircle, Crown, LogOut } from "lucide-react";
+import { 
+  Trophy, Clock, Star, BookOpen, X, ChevronRight, 
+  FileText, Edit3, CheckCircle, Crown 
+} from "lucide-react";
 
-// --- CONSTANTS ---
-// 🎨 Avatar สไตล์ Adventurer (หน้ากวนๆ) จัดให้ 30 แบบ!
+// Avatar Seeds
 const AVATAR_SEEDS = [
   "Felix", "Aneka", "Zoe", "Jack", "Abby", "Liam", 
   "Molly", "Pepper", "Sugar", "Dusty", "Ginger", "Bandit",
@@ -14,52 +16,55 @@ const AVATAR_SEEDS = [
   "Smokey", "Loki", "Sasha", "Oscar", "Sammy", "Misty"
 ];
 
-// Avatar ลับ Admin (ราชาผู้พิชิต)
-const ADMIN_AVATAR = "https://api.dicebear.com/7.x/adventurer/svg?seed=KingSlayer&backgroundColor=b6e3f4"; 
-
-// อีเมล Admin
-const ADMIN_EMAIL = "Admin1@gmail.com"; 
-
 export default function ProfilePage() {
   const router = useRouter();
   
   // States
-  const [userEmail, setUserEmail] = useState("");
   const [profile, setProfile] = useState(null);
   const [activities, setActivities] = useState([]);
   const [grades, setGrades] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+  const [isAdmin, setIsAdmin] = useState(false); // เช็ค Admin
+
   // Modals
   const [showGradeModal, setShowGradeModal] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState(null);
-  const [showEditModal, setShowEditModal] = useState(false); 
-
+  const [showEditModal, setShowEditModal] = useState(false);
+  
   // Edit States
   const [editName, setEditName] = useState(""); 
   const [selectedAvatar, setSelectedAvatar] = useState("");
-
-  // Filters
   const [filterYear, setFilterYear] = useState(1);
   const [filterTerm, setFilterTerm] = useState(1);
 
+  // --- FETCH DATA ---
   useEffect(() => {
     const fetchData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push("/register"); return; }
       
-      setUserEmail(user.email);
-
-      // Fetch Profile
+      // 1. ดึงข้อมูล Profile
       const { data: profileData } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-      setProfile(profileData);
       
+      // 2. Logic เช็ค Admin (เช็คทั้งเมล และ ชื่อ)
+      const email = user.email?.toLowerCase() || "";
+      const name = profileData?.first_name?.toLowerCase() || "";
+      const isEmailAdmin = email.includes("admin");
+      const isNameAdmin = name.includes("admin");
+
+      if (isEmailAdmin || isNameAdmin) {
+          setIsAdmin(true);
+      }
+
+      setProfile(profileData);
       setEditName(profileData?.first_name || "");
       setSelectedAvatar(profileData?.avatar || "");
 
-      // Fetch Others
+      // 3. ดึง Activities
       const { data: actData } = await supabase.from("activities").select("*").eq("user_id", user.id).order('date', { ascending: false });
       setActivities(actData || []);
+
+      // 4. ดึง Grades
       const { data: gradeData } = await supabase.from("grades").select("*").eq("user_id", user.id);
       setGrades(gradeData || []);
 
@@ -68,34 +73,21 @@ export default function ProfilePage() {
     fetchData();
   }, []);
 
-  // --- LOGIC ---
-  const handleLogout = async () => {
-    if (confirm("Are you sure you want to log out?")) {
-        await supabase.auth.signOut();
-        router.push("/register"); 
-        router.refresh();      
-    }
-  };
-
+  // --- ACTIONS ---
   const handleSaveProfile = async () => {
     if (!editName.trim()) return alert("Name cannot be empty!");
-    
     setLoading(true);
-    const { error } = await supabase
-        .from("profiles")
-        .update({ first_name: editName, avatar: selectedAvatar }) 
-        .eq("id", profile.id);
-
-    if (error) {
-        alert("Error: " + error.message);
-    } else {
-        setProfile({ ...profile, first_name: editName, avatar: selectedAvatar });
-        setShowEditModal(false);
+    const { error } = await supabase.from("profiles").update({ first_name: editName, avatar: selectedAvatar }).eq("id", profile.id);
+    if (!error) {
+        // Reload เพื่อให้ค่าใหม่ไปแสดงผลที่ Navbar ด้วย
         window.location.reload(); 
+    } else {
+        alert("Error saving profile: " + error.message);
     }
     setLoading(false);
   };
 
+  // --- CALCULATIONS ---
   const calculateGPA = (list) => {
     if (!list || list.length === 0) return 0.00;
     let p = 0, c = 0;
@@ -103,54 +95,41 @@ export default function ProfilePage() {
     list.forEach(g => { p += (map[g.grade] || 0) * (Number(g.credit) || 0); c += (Number(g.credit) || 0); });
     return c === 0 ? 0.00 : (p / c);
   };
-  
   const gpax = calculateGPA(grades);
   const filteredGrades = grades.filter(g => Number(g.study_year) === Number(filterYear) && Number(g.study_term) === Number(filterTerm));
   const semesterGPA = calculateGPA(filteredGrades);
-  
   const totalHours = activities.reduce((sum, act) => sum + act.hours, 0);
   const progressPercent = Math.min((totalHours / 25) * 100, 100);
   
+  // 🎨 THEME COLOR ENGINE
   const getThemeColor = () => {
+    if (isAdmin) return "from-rose-600 to-red-800"; // 🔴 Admin Theme
     switch (profile?.major) {
       case "IT": return "from-blue-500 to-cyan-400";
       case "CS": return "from-indigo-600 to-purple-500";
-      case "DSI": return "from-teal-400 to-emerald-500";
+      case "DSI": return "from-emerald-400 to-teal-500";
       default: return "from-gray-700 to-gray-900";
     }
   };
-
-  const isAdmin = userEmail && (userEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase());
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 md:pb-10">
       
-      {/* HEADER */}
-      <div className={`h-48 md:h-60 w-full bg-gradient-to-r ${getThemeColor()} relative`}>
-        <button 
-            onClick={handleLogout}
-            className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-white/20 backdrop-blur-md text-white px-4 py-2 rounded-full hover:bg-white/30 transition-all font-bold text-xs border border-white/30"
-        >
-            <LogOut size={16} /> Logout
-        </button>
+      {/* HEADER BACKGROUND */}
+      <div className={`h-48 md:h-60 w-full bg-gradient-to-r ${getThemeColor()} relative shadow-lg`}>
         <div className="absolute inset-0 bg-black/10"></div>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 -mt-20 relative z-10">
         <div className="flex flex-col md:flex-row gap-6">
 
-          {/* LEFT: USER CARD */}
+          {/* === LEFT COLUMN: USER INFO === */}
           <div className="md:w-1/3 flex flex-col gap-4">
             <div className="bg-white rounded-3xl shadow-xl p-6 flex flex-col items-center text-center relative animate-fade-in-up">
               
-              <button 
-                onClick={() => setShowEditModal(true)}
-                className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 text-gray-500 transition-colors z-10"
-              >
-                <Edit3 size={18} />
-              </button>
+              <button onClick={() => setShowEditModal(true)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 text-gray-500 transition-colors z-10"><Edit3 size={18} /></button>
 
               <div className="w-32 h-32 rounded-full border-4 border-white shadow-lg bg-gray-100 mb-4 overflow-hidden relative group">
                 <img src={profile?.avatar} className="w-full h-full object-cover" />
@@ -158,11 +137,12 @@ export default function ProfilePage() {
 
               <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2 justify-center">
                 {profile?.first_name}
-                {isAdmin && <Crown size={20} className="text-yellow-500 fill-yellow-500" />}
+                {isAdmin && <Crown size={24} className="text-yellow-500 fill-yellow-500" />}
               </h1>
               
-              <span className={`px-3 py-1 rounded-full text-xs font-bold text-white bg-gradient-to-r ${getThemeColor()} mb-4 mt-1`}>
-                {profile?.major} Student
+              {/* Badge แสดงสถานะ */}
+              <span className={`px-4 py-1.5 rounded-full text-xs font-bold text-white bg-gradient-to-r ${getThemeColor()} mb-4 mt-1 shadow-md`}>
+                {isAdmin ? "System Admin 🛡️" : `${profile?.major} Student`}
               </span>
 
               <div className="w-full border-t pt-4 grid grid-cols-2 gap-4">
@@ -171,6 +151,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
+            {/* GPAX CARD */}
             <button onClick={() => setShowGradeModal(true)} className="w-full bg-white rounded-3xl shadow-lg p-6 flex items-center justify-between border-l-8 border-yellow-400 relative overflow-hidden transition-transform hover:scale-105 active:scale-95 group">
                 <div className="z-10 text-left">
                    <p className="text-gray-400 text-xs font-bold tracking-wider group-hover:text-yellow-600 uppercase">Current GPAX</p>
@@ -181,7 +162,7 @@ export default function ProfilePage() {
             </button>
           </div>
 
-          {/* RIGHT: ACTIVITY */}
+          {/* === RIGHT COLUMN: ACTIVITIES === */}
           <div className="md:w-2/3 flex flex-col gap-6">
              <div className="bg-white rounded-3xl shadow-lg p-6">
                 <div className="flex justify-between items-center mb-2">
@@ -202,7 +183,7 @@ export default function ProfilePage() {
                                 <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm text-lg border border-gray-100">
                                     {act.category === 'Tech' ? '💻' : act.category === 'Staff' ? '👕' : '❤️'}
                                 </div>
-                                <div>
+                                <div className="text-left">
                                     <p className="font-bold text-sm text-gray-800 group-hover:text-sit-primary transition-colors">{act.name}</p>
                                     <p className="text-[10px] text-gray-400">{new Date(act.date).toLocaleDateString()}</p>
                                 </div>
@@ -218,7 +199,7 @@ export default function ProfilePage() {
 
       {/* --- MODALS --- */}
       
-      {/* EDIT PROFILE MODAL */}
+      {/* 1. EDIT PROFILE MODAL */}
       {showEditModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
@@ -227,35 +208,27 @@ export default function ProfilePage() {
                     <button onClick={() => setShowEditModal(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X size={20} /></button>
                 </div>
                 <div className="p-6 overflow-y-auto custom-scrollbar">
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Username / Display Name</label>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Display Name</label>
                     <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full p-3 border rounded-xl mb-6 bg-gray-50" />
-
                     <label className="block text-sm font-bold text-gray-700 mb-2">Choose Avatar (30 Styles)</label>
                     <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 mb-6">
                         {AVATAR_SEEDS.map((seed) => {
-                            // กลับมาใช้ Adventurer Style!
                             const url = `https://api.dicebear.com/7.x/adventurer/svg?seed=${seed}`;
                             return (
-                                <button key={seed} onClick={() => setSelectedAvatar(url)} className={`relative rounded-xl overflow-hidden border-2 aspect-square ${selectedAvatar === url ? "border-sit-primary ring-2 ring-blue-100 scale-105" : "border-transparent bg-gray-50"}`}>
-                                    <img src={url} className="w-full h-full bg-gray-50" alt="avatar" />
-                                    {selectedAvatar === url && <div className="absolute top-1 right-1 text-sit-primary"><CheckCircle size={16} fill="white" /></div>}
+                                <button key={seed} onClick={() => setSelectedAvatar(url)} className={`relative rounded-xl overflow-hidden border-2 aspect-square ${selectedAvatar === url ? "border-rose-500 ring-2 ring-rose-100 scale-105" : "border-transparent bg-gray-50"}`}>
+                                    <img src={url} className="w-full h-full" />
+                                    {selectedAvatar === url && <div className="absolute top-1 right-1 text-rose-500"><CheckCircle size={16} fill="white" /></div>}
                                 </button>
                             );
                         })}
-                        {isAdmin && (
-                            <button onClick={() => setSelectedAvatar(ADMIN_AVATAR)} className={`relative rounded-xl overflow-hidden border-2 aspect-square ${selectedAvatar === ADMIN_AVATAR ? "border-yellow-500 ring-2 ring-yellow-100" : "bg-yellow-50"}`}>
-                                <img src={ADMIN_AVATAR} className="w-full h-full bg-yellow-50" alt="admin" />
-                                <div className="absolute bottom-0 w-full bg-yellow-500 text-white text-[8px] font-bold text-center">LIMITED</div>
-                            </button>
-                        )}
                     </div>
-                    <button onClick={handleSaveProfile} className="w-full bg-sit-primary text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all">Save Changes</button>
+                    <button onClick={handleSaveProfile} className={`w-full text-white font-bold py-3 rounded-xl transition-all ${isAdmin ? 'bg-rose-600 hover:bg-rose-700' : 'bg-sit-primary hover:bg-blue-700'}`}>Save Changes</button>
                 </div>
             </div>
         </div>
       )}
 
-      {/* TRANSCRIPT MODAL (เหมือนเดิม) */}
+      {/* 2. TRANSCRIPT MODAL */}
       {showGradeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]">
@@ -291,7 +264,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* ACTIVITY MODAL (เหมือนเดิม) */}
+      {/* 3. ACTIVITY MODAL */}
       {selectedActivity && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden p-6 text-center relative">

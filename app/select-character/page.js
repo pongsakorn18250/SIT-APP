@@ -1,10 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
+import { CheckCircle, Loader2 } from "lucide-react";
 
-// 🎨 รายชื่อ Avatar สไตล์ Adventurer (30 แบบ)
-const AVATARS = [
+const AVATAR_SEEDS = [
   "Felix", "Aneka", "Zoe", "Jack", "Abby", "Liam", 
   "Molly", "Pepper", "Sugar", "Dusty", "Ginger", "Bandit",
   "Midnight", "Rocky", "Cuddles", "Snuggles", "Boots", "Whiskers",
@@ -12,95 +12,82 @@ const AVATARS = [
   "Smokey", "Loki", "Sasha", "Oscar", "Sammy", "Misty"
 ];
 
-export default function SelectCharacter() {
+export default function SelectCharacterPage() {
   const router = useRouter();
-  const [selectedAvatar, setSelectedAvatar] = useState(null);
+  const [selectedAvatar, setSelectedAvatar] = useState("");
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const handleConfirm = async () => {
-    if (!selectedAvatar) return alert("Please select an avatar!");
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push("/register"); return; }
+      setUser(user);
+    };
+    fetchUser();
+  }, []);
+
+  const handleSaveAvatar = async () => {
+    if (!selectedAvatar) return;
     setLoading(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      // อัปเดต Avatar ลง Database
-      const { error } = await supabase
-        .from("profiles")
-        .update({ avatar: selectedAvatar })
-        .eq("id", user.id);
+    const { error } = await supabase.from("profiles").update({ avatar: selectedAvatar }).eq("id", user.id);
 
-      if (!error) {
-        // ✅ แก้แล้ว: ไปหน้า Select Major ต่อ
-        router.push("/select-major"); 
-      } else {
+    if (error) {
         alert(error.message);
-      }
+        setLoading(false);
+    } else {
+        // 🕵️‍♂️ CHECK ROLE AGAIN (เพื่อส่งไปห้องลับ)
+        const email = user.email?.toLowerCase() || "";
+        const name = user.user_metadata?.full_name?.toLowerCase() || "";
+        
+        if (email.includes("admin") || email.includes("owner") || 
+            name.includes("admin") || name.includes("owner")) {
+            
+            // 🚪 ไปห้องลับ
+            router.push("/select-role"); 
+        } else {
+            // 🎓 ไปเลือกสาขา
+            router.push("/select-major"); 
+        }
     }
-    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-      
-      <div className="text-center mb-8 animate-fade-in-up">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 animate-fade-in">
+      <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Choose Your Avatar</h1>
-        <p className="text-gray-500">Pick a character that represents you! (You can change it later)</p>
+        <p className="text-gray-500">Pick a character that represents you!</p>
       </div>
 
-      {/* Grid เลือกตัวละคร */}
-      <div className="w-full max-w-5xl h-[60vh] overflow-y-auto custom-scrollbar p-2 mb-8">
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
-            {AVATARS.map((seed) => {
-                const avatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${seed}`;
-                const isSelected = selectedAvatar === avatarUrl;
-
-                return (
-                    <button
-                        key={seed}
-                        onClick={() => setSelectedAvatar(avatarUrl)}
-                        className={`
-                            relative group flex flex-col items-center p-3 rounded-2xl border-2 transition-all duration-200
-                            ${isSelected 
-                                ? "border-sit-primary bg-blue-50 scale-105 shadow-xl ring-2 ring-blue-200" 
-                                : "border-transparent bg-white hover:border-gray-200 hover:shadow-md hover:-translate-y-1"
-                            }
-                        `}
-                    >
-                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden mb-2 bg-gray-100">
-                            <img src={avatarUrl} alt={seed} className="w-full h-full object-cover" />
-                        </div>
-                        <span className={`text-sm font-bold ${isSelected ? "text-sit-primary" : "text-gray-400 group-hover:text-gray-600"}`}>
-                            {seed}
-                        </span>
-                        
-                        {isSelected && (
-                            <div className="absolute top-2 right-2 bg-sit-primary text-white rounded-full p-1 shadow-sm">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                            </div>
-                        )}
-                    </button>
-                );
-            })}
-        </div>
+      <div className="grid grid-cols-4 sm:grid-cols-6 gap-4 mb-8 max-w-3xl">
+        {AVATAR_SEEDS.map((seed) => {
+          const url = `https://api.dicebear.com/7.x/adventurer/svg?seed=${seed}`;
+          const isSelected = selectedAvatar === url;
+          return (
+            <button 
+              key={seed} 
+              onClick={() => setSelectedAvatar(url)} 
+              className={`relative rounded-2xl overflow-hidden border-4 aspect-square transition-all duration-200 ${isSelected ? "border-sit-primary scale-110 shadow-xl ring-4 ring-blue-100" : "border-transparent bg-white hover:scale-105 hover:shadow-md"}`}
+            >
+              <img src={url} alt={seed} className="w-full h-full object-cover" />
+              {isSelected && (
+                <div className="absolute top-1 right-1 bg-sit-primary rounded-full p-0.5 border-2 border-white shadow-sm">
+                   <CheckCircle size={16} className="text-white fill-white" />
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Confirm Button */}
-      <button
-        onClick={handleConfirm}
-        disabled={loading || !selectedAvatar}
-        className={`
-            w-full max-w-sm py-4 rounded-xl font-bold text-lg shadow-lg transition-all
-            ${!selectedAvatar 
-                ? "bg-gray-300 text-gray-500 cursor-not-allowed" 
-                : "bg-sit-primary text-white hover:bg-blue-700 hover:shadow-blue-200 active:scale-95"
-            }
-        `}
+      <button 
+        onClick={handleSaveAvatar} 
+        disabled={!selectedAvatar || loading}
+        className="px-12 py-4 bg-sit-primary text-white font-bold rounded-2xl shadow-lg hover:bg-blue-700 transition-all disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
       >
-        {loading ? "Saving..." : "Next: Select Major →"}
+        {loading ? <Loader2 className="animate-spin"/> : "Continue"}
       </button>
-
     </div>
   );
 }

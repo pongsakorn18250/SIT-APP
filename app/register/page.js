@@ -3,130 +3,104 @@ import { useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link"; 
+import { ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
 
 export default function AuthPage() {
   const router = useRouter();
   const [isSignUpActive, setIsSignUpActive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [showAdminPopup, setShowAdminPopup] = useState(false);
 
-  // --- States ---
-  // loginInput รับได้ทั้ง Email, Username, Student ID
+  // States
   const [loginInput, setLoginInput] = useState(""); 
   const [signInPassword, setSignInPassword] = useState("");
   
   const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-    confirmPassword: "", // เพิ่ม confirm password
-    firstName: "",
-    lastName: "",
-    username: "",
-    studentId: "",       // เพิ่ม student id
-    year: "1",
+    email: "", password: "", confirmPassword: "", firstName: "", lastName: "", username: "", studentId: "", year: "1",
   });
 
-  const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  const handleInputChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const toggleMode = () => { setIsSignUpActive(!isSignUpActive); setError(null); };
 
-  const toggleMode = () => {
-    setIsSignUpActive(!isSignUpActive);
-    setError(null);
-  };
-
-  // --- 🟢 SIGN IN Logic (ระบบ Login อัจฉริยะ) ---
+  // --- 🟢 SIGN IN Logic ---
   const handleSignIn = async (e) => {
     e.preventDefault();
     setLoading(true); setError(null);
     
     let finalEmail = loginInput.trim();
-
-    // 1. ถ้าสิ่งที่กรอก "ไม่ใช่" รูปแบบ Email -> ให้ไปค้นหา Email จาก Username/Student ID
     const isEmailFormat = /\S+@\S+\.\S+/.test(finalEmail);
     
     if (!isEmailFormat) {
-        console.log("🔍 กำลังค้นหา Email จาก Username/Student ID...");
-        const { data: foundEmail, error: rpcError } = await supabase.rpc('get_email_by_identity', { 
-            identity_input: finalEmail 
-        });
-
-        if (rpcError || !foundEmail) {
-            setError("Username or Student ID not found.");
-            setLoading(false);
-            return;
-        }
-        console.log("✅ เจอ Email แล้ว:", foundEmail);
-        finalEmail = foundEmail; // เปลี่ยนจาก username เป็น email เพื่อใช้ login
+        const { data: foundEmail } = await supabase.rpc('get_email_by_identity', { identity_input: finalEmail });
+        if (!foundEmail) { setError("User not found."); setLoading(false); return; }
+        finalEmail = foundEmail; 
     }
 
-    // 2. Login ด้วย Email (ที่อาจจะแปลงมาแล้ว) + Password
-    const { error } = await supabase.auth.signInWithPassword({
-      email: finalEmail,
-      password: signInPassword,
-    });
+    const { data, error } = await supabase.auth.signInWithPassword({ email: finalEmail, password: signInPassword });
 
     if (error) { 
-        setError(error.message); 
-        setLoading(false); 
+        setError(error.message); setLoading(false); 
     } else { 
-        router.push("/"); 
+        // 🕵️‍♂️ Check Role เพื่อ Redirect (ห้ามเข้าหน้า Home ถ้าเป็น Staff)
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.user.id).single();
+        
+        if (profile?.role === 'STUDENT') {
+            router.push("/");
+        } else {
+            router.push("/admin");
+        }
         router.refresh(); 
     }
   };
 
-  // --- 🔵 SIGN UP Logic ---
+  // --- 🔵 SIGN UP Logic (แก้ใหม่ให้ฉลาด) ---
   const handleSignUp = async (e) => {
     e.preventDefault();
+    if (formData.password !== formData.confirmPassword) { setError("Passwords mismatch"); return; }
     
-    const cleanEmail = formData.email.trim();
-    const cleanPassword = formData.password.trim();
-    const cleanConfirm = formData.confirmPassword.trim();
-    const cleanStudentId = formData.studentId.trim();
-
-    // Validations
-    if (!cleanEmail || !cleanPassword || !formData.firstName || !formData.username || !cleanStudentId) {
-        setError("Please fill in all required fields"); return;
-    }
-    if (cleanPassword !== cleanConfirm) {
-        setError("Passwords do not match!"); return;
-    }
-    if (cleanStudentId.length !== 11) {
-        setError("Student ID must be 11 digits."); return;
-    }
-
     setLoading(true); setError(null);
+    
+    const lowerEmail = formData.email.toLowerCase();
+    const lowerName = formData.firstName.toLowerCase();
+    const isAdminOrOwner = lowerEmail.includes("admin") || lowerName.includes("admin") || 
+                           lowerEmail.includes("owner") || lowerName.includes("owner");
 
-    // 1. สร้าง User
+    // ⚠️ VALIDATION: เช็ค 11 หลัก (เฉพาะ User ปกติ)
+    if (!isAdminOrOwner) {
+        if (!formData.studentId || formData.studentId.length !== 11) {
+            setError("Student ID must be exactly 11 digits."); 
+            setLoading(false); 
+            return;
+        }
+    }
+
     const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: cleanEmail,
-      password: cleanPassword,
+      email: formData.email, password: formData.password,
+      options: { data: { full_name: formData.firstName } }
     });
 
-    if (authError) { 
-        setError(authError.message); 
-        setLoading(false); 
-        return; 
-    }
+    if (authError) { setError(authError.message); setLoading(false); return; }
 
-    // 2. บันทึก Profile
     if (authData.user) {
       const { error: profileError } = await supabase.from("profiles").insert([{
         id: authData.user.id,
-        email: cleanEmail,
+        email: formData.email,
         first_name: formData.firstName,
         last_name: formData.lastName,
         username: formData.username,
-        student_id: cleanStudentId, // บันทึกรหัสนักศึกษา
-        year: formData.year,
+        // Admin ให้เลขมั่วไปก่อน User ปกติใช้เลขจริง
+        student_id: isAdminOrOwner ? `STAFF-${Math.floor(Math.random()*10000)}` : formData.studentId, 
+        year: isAdminOrOwner ? 0 : formData.year,
+        role: 'STUDENT', 
+        major: 'PENDING'
       }]);
 
       if (profileError) { 
-        setError("Account created but profile failed: " + profileError.message); 
-        setLoading(false); 
+        setError(profileError.message); setLoading(false); 
       } else { 
-        alert("Account created successfully!"); 
-        router.push("/select-character"); 
+        if (isAdminOrOwner) setShowAdminPopup(true);
+        else router.push("/select-character"); 
       }
     }
   };
@@ -137,6 +111,29 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-200 p-4">
       
+      {/* 🛑 POPUP ADMIN/OWNER */}
+      {showAdminPopup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in">
+            <div className="bg-gray-900 border border-gray-700 p-8 rounded-3xl shadow-2xl max-w-sm text-center relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-blue-500"></div>
+                <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse border border-gray-600">
+                    <ShieldCheck size={40} className="text-green-400" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2 tracking-wide">SYSTEM DETECTED</h2>
+                <p className="text-gray-400 mb-8 text-sm leading-relaxed">
+                    Privileged account identified.<br/>
+                    Initiating secure sequence to <span className="text-green-400 font-bold">Secret Command Center</span>.
+                </p>
+                <button 
+                    onClick={() => router.push("/select-character")} 
+                    className="w-full py-3 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-900/50"
+                >
+                    Proceed to Avatar Setup <ArrowRight size={18}/>
+                </button>
+            </div>
+        </div>
+      )}
+
       {/* 📱 MOBILE VIEW */}
       <div className="md:hidden bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-8 relative">
         <div className="text-center mb-6">
@@ -154,7 +151,8 @@ export default function AuthPage() {
                    <input name="lastName" placeholder="Last Name" className={inputStyle} value={formData.lastName || ""} onChange={handleInputChange} required />
                 </div>
                 <input name="username" placeholder="Username" className={inputStyle} value={formData.username || ""} onChange={handleInputChange} required />
-                <input name="studentId" placeholder="Student ID (11 digits)" className={inputStyle} value={formData.studentId || ""} onChange={handleInputChange} required maxLength={11} />
+                <input name="studentId" placeholder="Student ID (11 digits for Student)" className={inputStyle} value={formData.studentId || ""} onChange={handleInputChange} maxLength={11} />
+                
                 <select name="year" className={inputStyle} value={formData.year || ""} onChange={handleInputChange} required>
                    <option value="1">Year 1</option><option value="2">Year 2</option><option value="3">Year 3</option><option value="4">Year 4</option>
                 </select>
@@ -215,7 +213,7 @@ export default function AuthPage() {
                    <input name="lastName" placeholder="Last Name" className={inputStyle} value={formData.lastName || ""} onChange={handleInputChange} required />
                 </div>
                 <input name="username" placeholder="Username" className={inputStyle} value={formData.username || ""} onChange={handleInputChange} required />
-                <input name="studentId" placeholder="Student ID (11 digits)" className={inputStyle} value={formData.studentId || ""} onChange={handleInputChange} required maxLength={11} />
+                <input name="studentId" placeholder="Student ID (11 Digits for Student)" className={inputStyle} value={formData.studentId || ""} onChange={handleInputChange} />
                 
                 <div className="w-full flex gap-2">
                    <select name="year" className={inputStyle} value={formData.year || ""} onChange={handleInputChange} required>
@@ -256,7 +254,6 @@ export default function AuthPage() {
 
       </div>
       
-       {/* CSS ซ่อน scrollbar สำหรับฟอร์มยาว */}
        <style jsx global>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
