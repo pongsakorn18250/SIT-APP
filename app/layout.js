@@ -1,10 +1,6 @@
 import "./globals.css";
 import ClientLayout from "../components/ClientLayout"; // 👈 เรียกตัวใหม่มาใช้
-
-export const metadata = {
-  title: "SIT App",
-  description: "Survival Hub for SIT Students",
-};
+import FloatingNoti from"../components/FloatingNoti"; 
 
 export default function RootLayout({ children }) {
   return (
@@ -15,6 +11,7 @@ export default function RootLayout({ children }) {
         {/* 👇 เอา ClientLayout มาห่อ children แทน Navbar เดิม */}
         <ClientLayout>
           {children}
+        <FloatingNoti />
         </ClientLayout>
 
       </body>
