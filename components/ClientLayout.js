@@ -2,6 +2,7 @@
 import { usePathname } from "next/navigation";
 import Navbar from "./navbar";
 
+
 export default function ClientLayout({ children }) {
   const pathname = usePathname();
   
@@ -11,7 +12,10 @@ export default function ClientLayout({ children }) {
   return (
     <>
       {/* 1. แสดง Navbar เฉพาะตอนที่ไม่ใช่หน้า Auth */}
-      {!isAuthPage && <Navbar />}
+      {!isAuthPage && <Navbar />
+      
+      }
+      
 
       {/* 2. จัดการพื้นที่เนื้อหา (Main Content) */}
       {/* ถ้าเป็นหน้า Auth: ไม่ต้องมี padding */}

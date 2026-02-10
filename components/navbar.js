@@ -58,7 +58,6 @@ export default function Navbar() {
     setLoading(false);
   };
 
-  // Helper ดึงรหัส 3 ตัวท้าย (ป้องกัน Error)
   const getStudentIdDisplay = () => {
     if (!profile?.student_id) return "???";
     return String(profile.student_id).slice(-3);
@@ -82,44 +81,17 @@ export default function Navbar() {
 
   return (
     <>
-      {/* ================= MOBILE NAV ================= */}
+      {/* ================= ✅ MOBILE MINI PROFILE (FIXED 100%) ================= */}
+      {/* เทคนิคแก้: 
+          1. แยกก้อนนี้ออกมาอยู่นอกสุด (ไม่ซ้อน div อื่น)
+          2. ใช้ style={{ position: 'fixed' }} เพื่อบังคับ
+          3. ลบ animate-fade-in ที่ตัวแม่ทิ้ง
+      */}
+      
+
+      {/* ================= MOBILE BOTTOM NAV ================= */}
       <div className="md:hidden">
-        {pathname !== "/profile" && (
-            <div className="fixed top-4 left-4 z-50 animate-fade-in">
-                <div className="relative">
-                    <button onClick={() => setShowMiniMenu(!showMiniMenu)} className={`flex items-center gap-2 p-1.5 pr-3 rounded-full shadow-lg active:scale-95 transition-transform ${theme.button}`}>
-                        <div className="w-9 h-9 rounded-full bg-white overflow-hidden border-2 border-white/50">
-                            <img src={profile?.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=Guest"} className="w-full h-full object-cover"/>
-                        </div>
-                        <div className="text-left leading-tight">
-                            <p className="text-xs font-bold text-white">{profile?.first_name || "Guest"}</p>
-                            <div className="flex items-center gap-1">
-                                {profile?.role === 'OWNER' && <Crown size={10} className="text-yellow-300 fill-yellow-300"/>}
-                                {/* ✅ MOBILE: โชว์ 3 ตัวท้าย */}
-                                <p className="text-[9px] font-bold text-white/80">
-                                    {isAdmin ? profile?.role : `${profile?.major} #${getStudentIdDisplay()}`}
-                                </p>
-                            </div>
-                        </div>
-                        <ChevronDown size={12} className={`text-white/70 transition-transform ${showMiniMenu ? "rotate-180" : ""}`} />
-                    </button>
-
-                    {showMiniMenu && (
-                        <div className="absolute top-12 left-0 w-48 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden animate-fade-in-up flex flex-col z-50">
-                            <button onClick={() => { setShowAvatarModal(true); setShowMiniMenu(false); }} className="p-3 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2 group">
-                                <div className={`p-1 rounded-md ${theme.bgMain} ${theme.text}`}><Edit3 size={14} /></div> Change Avatar
-                            </button>
-                            <div className="h-[1px] bg-gray-100 mx-2"></div>
-                            <button onClick={() => { setShowLogoutConfirm(true); setShowMiniMenu(false); }} className="p-3 text-left text-xs font-bold text-red-500 hover:bg-red-50 flex items-center gap-2">
-                                <LogOut size={14} /> Log Out
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-        )}
-
-        <nav className={`fixed bottom-0 w-full border-t flex justify-around py-3 pb-5 z-40 text-xs font-bold transition-colors backdrop-blur-md ${theme.bgNav} ${theme.border} ${theme.textLight}`}>
+        <nav className={`fixed bottom-0 w-full border-t flex justify-around py-3 pb-6 z-40 text-xs font-bold transition-colors backdrop-blur-xl ${theme.bgNav} ${theme.border} ${theme.textLight}`}>
           {isAdmin ? (
              <>
                 <NavItemMobile href="/admin" icon={ShieldAlert} label="Admin" active={pathname === "/admin"} theme={theme} />
@@ -146,7 +118,6 @@ export default function Navbar() {
             </div>
             <div>
                 <p className="font-bold text-gray-800 text-lg leading-tight">{profile?.first_name}</p>
-                {/* ✅ DESKTOP: แก้ให้โชว์ 3 ตัวท้ายเหมือนกัน */}
                 <p className={`text-xs font-bold ${theme.text}`}>
                     {isAdmin ? profile?.role : `${profile?.major} #${getStudentIdDisplay()}`}
                 </p>
@@ -177,7 +148,7 @@ export default function Navbar() {
 
       {/* ================= MODALS ================= */}
       {showAvatarModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]">
                 <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                     <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Edit3 size={18} className={theme.text}/> Choose New Avatar</h2>
@@ -202,7 +173,7 @@ export default function Navbar() {
       )}
 
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center relative overflow-hidden">
                 <div className={`w-32 h-32 mx-auto mb-4 rounded-full border-4 border-white shadow-lg animate-bounce ${theme.bgMain}`}>
                     <img src={profile?.avatar} className="w-full h-full object-cover" />

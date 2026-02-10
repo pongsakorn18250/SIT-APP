@@ -12,39 +12,44 @@ export default function AdminPage() {
   const router = useRouter();
   
   // --- STATES ---
-  const [activeTab, setActiveTab] = useState("users"); // 'users', 'grade', 'activity', 'schedule'
+  const [activeTab, setActiveTab] = useState("users");
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [myRole, setMyRole] = useState(""); 
   
-  // Modal & Detail States (สำหรับหน้าดูข้อมูลละเอียด)
+  // Modal & Detail States
   const [viewingUser, setViewingUser] = useState(null);
-  const [modalTab, setModalTab] = useState("profile"); // 'profile', 'transcript', 'activity'
+  const [modalTab, setModalTab] = useState("profile");
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
 
-  // Deep Data States (ข้อมูลลึก: เกรดรายเทอม / กิจกรรมรายปี)
-  const [studentGrades, setStudentGrades] = useState({}); // เก็บแบบ Group: { "1/1": [..], "1/2": [..] }
+  // Deep Data States
+  const [studentGrades, setStudentGrades] = useState({});
   const [studentActivities, setStudentActivities] = useState([]); 
-  const [activityProgress, setActivityProgress] = useState({ 1:0, 2:0, 3:0, 4:0 }); // ชั่วโมงรายปี
+  const [activityProgress, setActivityProgress] = useState({ 1:0, 2:0, 3:0, 4:0 });
 
-  // Add Data Form States (สำหรับฟอร์มเพิ่มข้อมูล)
+  // ✅ State สำหรับระบบเกรดจริง
+  const [studentEnrollments, setStudentEnrollments] = useState([]); 
+  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState(""); 
+
+  // Add Data Form States
   const [selectedUserId, setSelectedUserId] = useState("");
   const [targetStudent, setTargetStudent] = useState(null);
   
   // Grade Form Inputs
-  const [subjectCode, setSubjectCode] = useState("");
-  const [subjectName, setSubjectName] = useState("");
   const [grade, setGrade] = useState("A");
-  const [credit, setCredit] = useState(3);
   const [year, setYear] = useState(1);
   const [term, setTerm] = useState(1);
+  const [subjectCode, setSubjectCode] = useState(""); 
+  const [subjectName, setSubjectName] = useState(""); 
+  const [credit, setCredit] = useState(3);
 
   // Activity Form Inputs
   const [actName, setActName] = useState("");
   const [actHours, setActHours] = useState(3);
   const [actCategory, setActCategory] = useState("Tech");
   const [actDesc, setActDesc] = useState(""); 
+  const [actYear, setActYear] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- INITIALIZE ---
@@ -56,14 +61,12 @@ export default function AdminPage() {
       const { data: myProfile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
       
       if (!myProfile || myProfile.role === 'STUDENT') {
-         // ถ้าเป็น Student ดีดออกไป Home
          router.push("/"); 
          return;
       }
 
       setMyRole(myProfile.role);
 
-      // ถ้าเป็น Owner เห็นหมด / ถ้าเป็น Admin อื่นๆ เห็นแค่ Student
       let query = supabase.from("profiles").select("*").order("student_id", { ascending: true });
       if (myProfile.role !== 'OWNER') {
           query = query.eq('role', 'STUDENT');
@@ -78,15 +81,46 @@ export default function AdminPage() {
     initAdmin();
   }, []);
 
-  // --- LOGIC: Select Student for Adding Data ---
-  const handleSelectStudent = (id) => {
+  // --- LOGIC: Select Student (ดึงวิชาแบบชัวร์ๆ) ---
+  const handleSelectStudent = async (id) => {
       setSelectedUserId(id);
       const student = users.find(u => u.id === id);
       setTargetStudent(student);
-      setYear(1); 
+      setYear(student?.year ? Number(student.year) : 1);
+      setActYear(student?.year ? Number(student.year) : 1);
+
+      if (id) {
+        // 1. ดึง Enrollment
+        const { data: enrolls } = await supabase
+            .from("enrollments")
+            .select("id, grade, status, class_id")
+            .eq("user_id", id);
+
+        if (enrolls && enrolls.length > 0) {
+            const classIds = enrolls.map(e => e.class_id);
+            
+            // 2. ดึงรายละเอียดวิชา
+            const { data: classesData } = await supabase
+                .from("classes")
+                .select(`id, subject_code, subjects (name, credit)`)
+                .in("id", classIds);
+
+            // 3. รวมร่างข้อมูล
+            const combined = enrolls.map(e => {
+                const cls = classesData?.find(c => c.id === e.class_id);
+                return { ...e, classes: cls };
+            });
+            setStudentEnrollments(combined);
+        } else {
+            setStudentEnrollments([]);
+        }
+        setSelectedEnrollmentId(""); 
+      } else {
+        setStudentEnrollments([]);
+      }
   };
 
-  // --- PERMISSION & THEME ---
+  // --- THEME ---
   const isOwner = myRole === 'OWNER';
   const canEditUser = isOwner || myRole === 'REGISTRAR';
   const canAddGrade = isOwner || myRole === 'ACADEMIC';
@@ -104,40 +138,60 @@ export default function AdminPage() {
       activeTab: "text-rose-600 border-rose-600 bg-rose-50",
   };
 
-  // --- 🔥 LOGIC: VIEW USER DETAIL (Deep Dive) ---
+  // --- VIEW USER DETAIL ---
   const handleViewUser = async (user) => {
     setLoading(true);
     
-    // 1. Fetch Deep Data (ดึงเกรดและกิจกรรมทั้งหมดของคนนี้)
-    const { data: grades } = await supabase.from("grades").select("*").eq("user_id", user.id).order('study_year', { ascending: true }).order('study_term', { ascending: true });
+    // 1. ดึงข้อมูล Enrollment + Activity
+    const { data: enrolls } = await supabase.from("enrollments").select("id, grade, class_id").eq("user_id", user.id);
     const { data: activities } = await supabase.from("activities").select("*").eq("user_id", user.id).order('academic_year', { ascending: true });
     
-    // 2. Process Grades (จัดกลุ่มเกรดตาม ปี/เทอม)
+    let processedGrades = [];
+    if (enrolls && enrolls.length > 0) {
+        const classIds = enrolls.map(e => e.class_id);
+        const { data: classesData } = await supabase
+            .from("classes")
+            .select(`id, subject_code, study_year, study_term, subjects (name, credit)`)
+            .in("id", classIds);
+
+        processedGrades = enrolls.map(e => {
+            const cls = classesData?.find(c => c.id === e.class_id);
+            return { ...e, classes: cls };
+        });
+    }
+
+    // Process Grades & GPA Calculation
     const groupedGrades = {};
     let totalScore = 0, totalCredit = 0;
     const gradeMap = { "A": 4, "B+": 3.5, "B": 3, "C+": 2.5, "C": 2, "D+": 1.5, "D": 1, "F": 0, "I": 0 };
     
-    grades?.forEach(g => {
-        // สร้าง Key เช่น "1/1", "1/2"
-        const key = `${g.study_year}/${g.study_term}`;
+    processedGrades.forEach(e => {
+        const cls = e.classes;
+        const subj = cls?.subjects;
+        if(!cls || !subj) return;
+
+        const key = `${cls.study_year || 1}/${cls.study_term || 1}`;
         if (!groupedGrades[key]) groupedGrades[key] = [];
-        groupedGrades[key].push(g);
         
-        // คำนวณ GPAX รวม
-        if (g.grade !== "I") {
-            totalScore += (gradeMap[g.grade] || 0) * g.credit;
-            totalCredit += g.credit;
+        groupedGrades[key].push({
+            subject_code: cls.subject_code,
+            subject_name: subj.name,
+            grade: e.grade || "Studying",
+            credit: subj.credit
+        });
+        
+        if (e.grade && gradeMap[e.grade] !== undefined) {
+            totalScore += (gradeMap[e.grade] * subj.credit);
+            totalCredit += subj.credit;
         }
     });
 
-    // 3. Process Activities (รวมชั่วโมงตามปี)
     const actProgress = { 1: 0, 2: 0, 3: 0, 4: 0 };
     activities?.forEach(a => {
         const y = a.academic_year || 1; 
         if (actProgress[y] !== undefined) actProgress[y] += a.hours;
     });
 
-    // 4. Set State ทั้งหมด
     const gpax = totalCredit ? (totalScore / totalCredit).toFixed(2) : "0.00";
     const totalHours = activities?.reduce((sum, a) => sum + a.hours, 0) || 0;
 
@@ -148,7 +202,7 @@ export default function AdminPage() {
     
     setEditForm(user);
     setIsEditing(false);
-    setModalTab("profile"); // เปิดมาเจอหน้า Profile ก่อน
+    setModalTab("profile");
     setLoading(false);
   };
 
@@ -173,13 +227,12 @@ export default function AdminPage() {
 
   const handleDeleteUser = async () => {
     if (!isOwner) return;
-    const confirmDelete = confirm(`Are you sure you want to delete ${viewingUser.first_name}?`);
-    if (!confirmDelete) return;
+    if (!confirm(`Delete ${viewingUser.first_name}?`)) return;
 
     setIsSubmitting(true);
-    // ลบแม่ลูก (ถึง DB จะ Cascade แล้ว แต่สั่งลบเผื่อไว้เพื่อความชัวร์ในฝั่ง Client logic)
-    await supabase.from("grades").delete().eq("user_id", viewingUser.id);
+    await supabase.from("enrollments").delete().eq("user_id", viewingUser.id);
     await supabase.from("activities").delete().eq("user_id", viewingUser.id);
+    await supabase.from("notifications").delete().eq("user_id", viewingUser.id); 
     const { error } = await supabase.from("profiles").delete().eq("id", viewingUser.id);
 
     setIsSubmitting(false);
@@ -192,75 +245,76 @@ export default function AdminPage() {
     }
   };
 
-  const handleAddGrade = async () => {
-    if (!selectedUserId || !subjectCode) return alert("Please fill data");
+  // ✅ SAVE GRADE (Update ลง Enrollments)
+  const handleSaveGrade = async () => {
+    if (!selectedUserId || !selectedEnrollmentId) return alert("Please select student and class");
     setIsSubmitting(true);
 
-    const { error } = await supabase.from("grades").insert({ 
-        user_id: selectedUserId, 
-        subject_code: subjectCode, 
-        subject_name: subjectName, 
-        grade, 
-        credit, 
-        study_year: year, 
-        study_term: term 
-    });
-
-    setIsSubmitting(false);
+    const { error } = await supabase
+        .from("enrollments")
+        .update({ grade: grade, status: 'completed' })
+        .eq("id", selectedEnrollmentId);
 
     if (!error) { 
-        alert("Grade Added! ✅"); 
-        setSubjectCode(""); setSubjectName(""); 
+        const targetClass = studentEnrollments.find(e => e.id === selectedEnrollmentId);
+        const subjName = targetClass?.classes?.subjects?.name || "Subject";
+
+        await supabase.from("notifications").insert({
+            user_id: selectedUserId,
+            title: "Grade Released",
+            message: `วิชา ${subjName} เกรดออกแล้ว! เกรด: ${grade}`,
+            type: "grade",
+            is_read: false
+        });
+
+        alert("Grade Updated! ✅"); 
+        handleSelectStudent(selectedUserId); 
     } else {
         alert("Error: " + error.message);
     }
+    setIsSubmitting(false);
   };
 
+  // ✅ ADD ACTIVITY
   const handleAddActivity = async () => {
     if (!selectedUserId || !actName) return alert("Please fill data");
     setIsSubmitting(true);
 
-    const { error } = await supabase.from("activities").insert({ 
-        user_id: selectedUserId, 
-        name: actName, 
-        hours: actHours, 
-        category: actCategory, 
-        date: new Date(), 
-        academic_year: year, 
-        description: actDesc 
+    const { error: actError } = await supabase.from("activities").insert({ 
+        user_id: selectedUserId, name: actName, hours: actHours, category: actCategory, 
+        date: new Date(), academic_year: actYear, description: actDesc 
     });
 
-    setIsSubmitting(false);
-
-    if (!error) { 
+    if (!actError) { 
+        await supabase.from("notifications").insert({
+            user_id: selectedUserId, title: "Activity Recorded",
+            message: `บันทึกกิจกรรม "${actName}" เรียบร้อย! (+${actHours} hrs)`, type: "activity", is_read: false
+        });
         alert("Activity Added! 🏆"); 
         setActName(""); setActDesc(""); 
     } else {
-        alert("Error: " + error.message);
+        alert("Error: " + actError.message);
     }
+    setIsSubmitting(false);
   };
 
-  // Helper: คำนวณ GPA รายเทอม
   const calculateTermGPA = (grades) => {
     let score = 0, credit = 0;
-    const map = { "A": 4, "B+": 3.5, "B": 3, "C+": 2.5, "C": 2, "D+": 1.5, "D": 1, "F": 0, "I": 0 };
+    const map = { "A": 4, "B+": 3.5, "B": 3, "C+": 2.5, "C": 2, "D+": 1.5, "D": 1, "F": 0 };
     grades.forEach(g => { 
-        if(g.grade !== "I") { 
-            score += (map[g.grade] || 0) * g.credit; 
-            credit += g.credit; 
-        } 
+        if(map[g.grade] !== undefined) { score += (map[g.grade] * g.credit); credit += g.credit; } 
     });
     return credit ? (score / credit).toFixed(2) : "0.00";
   };
 
-  if (loading && !viewingUser) return <div className={`min-h-screen flex items-center justify-center font-bold ${theme.text}`}>Loading...</div>;
+  // ✅ แก้ไข Loading: ใช้ text-gray-500 แทน theme.text เพื่อเลี่ยง ReferenceError
+  if (loading && !viewingUser) return <div className="min-h-screen flex items-center justify-center font-bold text-gray-500">Loading...</div>;
 
   return (
     <div className={`min-h-screen ${theme.bg} flex flex-col items-center justify-center p-4 md:p-6 transition-colors`}>
-      
       <div className={`w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden border ${theme.border} flex flex-col h-[85vh]`}>
         
-        {/* === HEADER === */}
+        {/* HEADER */}
         <div className={`${theme.header} text-white p-6 flex justify-between items-center shrink-0`}>
             <div className="flex items-center gap-3">
                 {isOwner ? <Crown size={32} className="text-white"/> : <ShieldAlert size={32} className="text-white"/>}
@@ -274,35 +328,18 @@ export default function AdminPage() {
             </button>
         </div>
 
-        {/* === MAIN TABS === */}
+        {/* TABS */}
         <div className="flex border-b border-gray-100 shrink-0 overflow-x-auto">
-            <button onClick={() => setActiveTab("users")} className={`flex-1 min-w-[100px] py-4 text-sm font-bold flex items-center justify-center gap-2 ${activeTab === "users" ? theme.activeTab : "text-gray-400"}`}>
-                <Users size={18} /> Users
-            </button>
-            
-            {canAddGrade && (
-                <button onClick={() => setActiveTab("grade")} className={`flex-1 min-w-[100px] py-4 text-sm font-bold flex items-center justify-center gap-2 ${activeTab === "grade" ? theme.activeTab : "text-gray-400"}`}>
-                    <Book size={18} /> Grade
-                </button>
-            )}
-
-            {canAddGrade && (
-                <button onClick={() => setActiveTab("activity")} className={`flex-1 min-w-[100px] py-4 text-sm font-bold flex items-center justify-center gap-2 ${activeTab === "activity" ? theme.activeTab : "text-gray-400"}`}>
-                    <Trophy size={18} /> Activity
-                </button>
-            )}
-            
-            {canSchedule && (
-                <button onClick={() => setActiveTab("schedule")} className={`flex-1 min-w-[100px] py-4 text-sm font-bold flex items-center justify-center gap-2 ${activeTab === "schedule" ? theme.activeTab : "text-gray-400"}`}>
-                    <Calendar size={18} /> Plan
-                </button>
-            )}
+            <button onClick={() => setActiveTab("users")} className={`flex-1 min-w-[100px] py-4 text-sm font-bold flex items-center justify-center gap-2 ${activeTab === "users" ? theme.activeTab : "text-gray-400"}`}><Users size={18} /> Users</button>
+            {canAddGrade && <button onClick={() => setActiveTab("grade")} className={`flex-1 min-w-[100px] py-4 text-sm font-bold flex items-center justify-center gap-2 ${activeTab === "grade" ? theme.activeTab : "text-gray-400"}`}><Book size={18} /> Grading</button>}
+            {canAddGrade && <button onClick={() => setActiveTab("activity")} className={`flex-1 min-w-[100px] py-4 text-sm font-bold flex items-center justify-center gap-2 ${activeTab === "activity" ? theme.activeTab : "text-gray-400"}`}><Trophy size={18} /> Activity</button>}
+            {canSchedule && <button onClick={() => setActiveTab("schedule")} className={`flex-1 min-w-[100px] py-4 text-sm font-bold flex items-center justify-center gap-2 ${activeTab === "schedule" ? theme.activeTab : "text-gray-400"}`}><Calendar size={18} /> Plan</button>}
         </div>
 
-        {/* === CONTENT AREA === */}
+        {/* CONTENT */}
         <div className="flex-1 overflow-y-auto p-6 bg-white custom-scrollbar">
             
-            {/* 👥 TAB 1: USERS LIST */}
+            {/* USERS LIST */}
             {activeTab === "users" && (
                 <div className="space-y-4">
                      <div className="flex justify-between items-center mb-4">
@@ -329,48 +366,66 @@ export default function AdminPage() {
                 </div>
             )}
 
-            {/* 📚 TAB 2: GRADE FORM (Add Data) */}
+            {/* ✅ GRADING TAB (แก้ UI ให้เลือกวิชาได้จริง) */}
             {activeTab === "grade" && (
-                <div className="max-w-lg mx-auto space-y-4 animate-fade-in">
-                    <div className="space-y-1">
-                        <label className="text-xs font-bold text-gray-500">Target Student</label>
-                        <select className="w-full p-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-blue-100" value={selectedUserId} onChange={(e) => handleSelectStudent(e.target.value)}>
-                            <option value="">-- Select Student --</option>
-                            {users.filter(u => u.role === 'STUDENT').map(u => (
-                                <option key={u.id} value={u.id}>{u.student_id} - {u.first_name}</option>
-                            ))}
-                        </select>
+                <div className="max-w-lg mx-auto space-y-6 animate-fade-in">
+                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                        <h3 className="text-blue-700 font-bold flex items-center gap-2 mb-1"><Book size={18}/> Grading System</h3>
+                        <p className="text-xs text-blue-500">Select a student and their enrolled class to assign a grade.</p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                         <div className="space-y-1"><label className="text-xs font-bold text-gray-500">Code</label><input placeholder="GEN111" className="w-full p-3 border rounded-xl" value={subjectCode} onChange={e => setSubjectCode(e.target.value)} /></div>
-                         <div className="space-y-1"><label className="text-xs font-bold text-gray-500">Name</label><input placeholder="Subject Name" className="w-full p-3 border rounded-xl" value={subjectName} onChange={e => setSubjectName(e.target.value)} /></div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                         <div className="space-y-1">
-                             <label className="text-xs font-bold text-gray-500">Year</label>
-                             <select className="w-full p-3 border rounded-xl" value={year} onChange={e => setYear(Number(e.target.value))} disabled={!targetStudent}>
-                                {Array.from({ length: Number(targetStudent?.year) || 1 }, (_, i) => i + 1).map(y => (
-                                    <option key={y} value={y}>Year {y}</option>
+                    <div className="space-y-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-500">1. Select Student</label>
+                            <select className="w-full p-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-blue-100" value={selectedUserId} onChange={(e) => handleSelectStudent(e.target.value)}>
+                                <option value="">-- Select Student --</option>
+                                {users.filter(u => u.role === 'STUDENT').map(u => (
+                                    <option key={u.id} value={u.id}>{u.student_id} - {u.first_name}</option>
                                 ))}
-                             </select>
-                         </div>
-                         <div className="space-y-1"><label className="text-xs font-bold text-gray-500">Term</label><select className="w-full p-3 border rounded-xl" value={term} onChange={e => setTerm(Number(e.target.value))}><option value={1}>Term 1</option><option value={2}>Term 2</option></select></div>
-                    </div>
+                            </select>
+                        </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1"><label className="text-xs font-bold text-gray-500">Grade</label><select className="w-full p-3 border rounded-xl" value={grade} onChange={e => setGrade(e.target.value)}><option>A</option><option>B+</option><option>B</option><option>C+</option><option>C</option><option>D+</option><option>D</option><option>F</option><option>I</option></select></div>
-                        <div className="space-y-1"><label className="text-xs font-bold text-gray-500">Credit</label><input type="number" className="w-full p-3 border rounded-xl" value={credit} onChange={e => setCredit(e.target.value)} /></div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-500">2. Select Enrolled Class</label>
+                            <select 
+                                className="w-full p-3 border rounded-xl bg-white disabled:bg-gray-100" 
+                                value={selectedEnrollmentId} 
+                                onChange={(e) => setSelectedEnrollmentId(e.target.value)}
+                                disabled={!selectedUserId}
+                            >
+                                <option value="">-- Choose Class to Grade --</option>
+                                {studentEnrollments.map(e => (
+                                    <option key={e.id} value={e.id}>
+                                        {e.classes?.subject_code} - {e.classes?.subjects?.name} (Current: {e.grade || '-'})
+                                    </option>
+                                ))}
+                            </select>
+                            {selectedUserId && studentEnrollments.length === 0 && <p className="text-xs text-red-400 mt-1">This student has no enrolled classes.</p>}
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-500">3. Assign Grade</label>
+                            <div className="grid grid-cols-4 gap-2">
+                                {["A", "B+", "B", "C+", "C", "D+", "D", "F"].map(g => (
+                                    <button 
+                                        key={g} 
+                                        onClick={() => setGrade(g)}
+                                        className={`py-3 rounded-lg text-sm font-bold border transition-all ${grade === g ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                                    >
+                                        {g}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <button onClick={handleSaveGrade} disabled={isSubmitting || !selectedEnrollmentId} className={`w-full text-white font-bold py-3 rounded-xl transition-all shadow-lg active:scale-95 flex justify-center mt-4 ${theme.btn} ${(isSubmitting || !selectedEnrollmentId) ? "opacity-50 cursor-not-allowed" : ""}`}>
+                            {isSubmitting ? <Loader2 className="animate-spin"/> : "Confirm & Release Grade"}
+                        </button>
                     </div>
-                    
-                    <button onClick={handleAddGrade} disabled={isSubmitting} className={`w-full text-white font-bold py-3 rounded-xl transition-all shadow-lg active:scale-95 flex justify-center ${theme.btn} ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}>
-                        {isSubmitting ? <Loader2 className="animate-spin"/> : "Save Grade Record"}
-                    </button>
                 </div>
             )}
 
-            {/* 🏆 TAB 3: ACTIVITY FORM (Add Data) */}
+            {/* ACTIVITY FORM */}
             {activeTab === "activity" && (
                 <div className="max-w-lg mx-auto space-y-4 animate-fade-in">
                      <div className="space-y-1">
@@ -380,31 +435,26 @@ export default function AdminPage() {
                             {users.filter(u => u.role === 'STUDENT').map(u => (<option key={u.id} value={u.id}>{u.student_id} - {u.first_name}</option>))}
                         </select>
                      </div>
-
-                    <div className="space-y-1"><label className="text-xs font-bold text-gray-500">Activity Name</label><input placeholder="SIT Camp 2026" className="w-full p-3 border rounded-xl" value={actName} onChange={e => setActName(e.target.value)} /></div>
-                    <div className="space-y-1"><label className="text-xs font-bold text-gray-500">Description</label><textarea placeholder="Details about activity..." className="w-full p-3 border rounded-xl h-24" value={actDesc} onChange={e => setActDesc(e.target.value)} /></div>
-
+                    <div className="space-y-1"><label className="text-xs font-bold text-gray-500">Activity Name</label><input placeholder="Event Name" className="w-full p-3 border rounded-xl" value={actName} onChange={e => setActName(e.target.value)} /></div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1"><label className="text-xs font-bold text-gray-500">Hours</label><input type="number" placeholder="Hours" className="w-full p-3 border rounded-xl" value={actHours} onChange={e => setActHours(e.target.value)} /></div>
                         <div className="space-y-1"><label className="text-xs font-bold text-gray-500">Category</label><select className="w-full p-3 border rounded-xl" value={actCategory} onChange={e => setActCategory(e.target.value)}><option value="Tech">Tech</option><option value="Staff">Staff</option><option value="Social">Social</option></select></div>
                     </div>
-
                     <div className="w-full space-y-1">
                          <label className="text-xs text-gray-500 font-bold block">Activity Year</label>
-                         <select className="w-full p-3 border rounded-xl" value={year} onChange={e => setYear(Number(e.target.value))} disabled={!targetStudent}>
+                         <select className="w-full p-3 border rounded-xl" value={actYear} onChange={e => setActYear(Number(e.target.value))} disabled={!targetStudent}>
                             {Array.from({ length: Number(targetStudent?.year) || 1 }, (_, i) => i + 1).map(y => (
                                 <option key={y} value={y}>Year {y}</option>
                             ))}
                          </select>
                     </div>
-
                     <button onClick={handleAddActivity} disabled={isSubmitting} className={`w-full text-white font-bold py-3 rounded-xl transition-all shadow-lg active:scale-95 flex justify-center ${theme.btn} ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}>
                         {isSubmitting ? <Loader2 className="animate-spin"/> : "Save Activity Record"}
                     </button>
                 </div>
             )}
             
-            {/* 🗓️ TAB 4: PLAN MOCKUP */}
+            {/* PLAN MOCKUP */}
             {activeTab === "schedule" && (
                 <div className="text-center py-10 opacity-60">
                     <Calendar size={64} className="mx-auto mb-4 text-gray-300"/>
@@ -416,36 +466,28 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* ================= 🔥 NEW MODAL: TABBED INTERFACE 🔥 ================= */}
+      {/* MODAL: VIEW USER */}
       {viewingUser && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-                
-                {/* Modal Header */}
                 <div className={`p-4 flex justify-between items-center text-white ${theme.header}`}>
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-white/20 overflow-hidden border border-white/50">
                             <img src={viewingUser.avatar} className="w-full h-full object-cover"/>
                         </div>
-                        <div>
-                            <h3 className="font-bold leading-tight">{viewingUser.first_name}</h3>
-                            <p className="text-xs opacity-90">{viewingUser.student_id}</p>
-                        </div>
+                        <div><h3 className="font-bold leading-tight">{viewingUser.first_name}</h3><p className="text-xs opacity-90">{viewingUser.student_id}</p></div>
                     </div>
                     <button onClick={() => setViewingUser(null)} className="hover:bg-white/20 p-1 rounded-full"><X size={20}/></button>
                 </div>
 
-                {/* Modal Tabs Navigation */}
                 <div className="flex border-b">
                     <button onClick={() => setModalTab("profile")} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider ${modalTab === "profile" ? "text-gray-800 border-b-2 border-gray-800" : "text-gray-400 hover:bg-gray-50"}`}>Profile</button>
                     <button onClick={() => setModalTab("transcript")} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider ${modalTab === "transcript" ? "text-gray-800 border-b-2 border-gray-800" : "text-gray-400 hover:bg-gray-50"}`}>Transcript</button>
                     <button onClick={() => setModalTab("activity")} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider ${modalTab === "activity" ? "text-gray-800 border-b-2 border-gray-800" : "text-gray-400 hover:bg-gray-50"}`}>Activity</button>
                 </div>
 
-                {/* Modal Content Area */}
                 <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
-                    
-                    {/* TAB 1: PROFILE EDIT */}
+                    {/* PROFILE TAB */}
                     {modalTab === "profile" && (
                         <>
                             {isEditing && canEditUser ? (
@@ -468,14 +510,8 @@ export default function AdminPage() {
                                         <p className="text-sm text-gray-400">Year {viewingUser.year}</p>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <div className="bg-blue-50 p-3 rounded-xl">
-                                            <p className="text-xs text-blue-400 font-bold uppercase">GPAX</p>
-                                            <p className="text-2xl font-bold text-blue-600">{viewingUser.gpax}</p>
-                                        </div>
-                                        <div className="bg-green-50 p-3 rounded-xl">
-                                            <p className="text-xs text-green-400 font-bold uppercase">Activity</p>
-                                            <p className="text-2xl font-bold text-green-600">{viewingUser.totalHours} <span className="text-xs">hrs</span></p>
-                                        </div>
+                                        <div className="bg-blue-50 p-3 rounded-xl"><p className="text-xs text-blue-400 font-bold uppercase">GPAX</p><p className="text-2xl font-bold text-blue-600">{viewingUser.gpax}</p></div>
+                                        <div className="bg-green-50 p-3 rounded-xl"><p className="text-xs text-green-400 font-bold uppercase">Activity</p><p className="text-2xl font-bold text-green-600">{viewingUser.totalHours} <span className="text-xs">hrs</span></p></div>
                                     </div>
                                     <div className="flex gap-2 mt-4">
                                         {canEditUser && (
@@ -494,25 +530,17 @@ export default function AdminPage() {
                         </>
                     )}
 
-                    {/* TAB 2: TRANSCRIPT (Deep Grade View - New Logic) */}
+                    {/* TAB 2: TRANSCRIPT */}
                     {modalTab === "transcript" && (
                         <div className="space-y-4 animate-fade-in">
                             {Object.keys(studentGrades).length === 0 ? (
-                                <div className="text-center text-gray-400 py-10 flex flex-col items-center">
-                                    <Book size={48} className="opacity-20 mb-2"/>
-                                    <p>No grades recorded yet.</p>
-                                </div>
+                                <div className="text-center text-gray-400 py-10 flex flex-col items-center"><Book size={48} className="opacity-20 mb-2"/><p>No grades recorded yet.</p></div>
                             ) : (
-                                Object.keys(studentGrades).map((termKey) => (
+                                Object.keys(studentGrades).sort().map((termKey) => (
                                     <div key={termKey} className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                                         <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
-                                            <span className="font-bold text-sm text-gray-700 flex items-center gap-2">
-                                                <Calendar size={14} className="text-gray-400"/>
-                                                Year {termKey.split('/')[0]} / Term {termKey.split('/')[1]}
-                                            </span>
-                                            <span className="text-xs font-bold bg-white border border-gray-200 px-2 py-1 rounded-md text-gray-600 shadow-sm">
-                                                GPA: {calculateTermGPA(studentGrades[termKey])}
-                                            </span>
+                                            <span className="font-bold text-sm text-gray-700 flex items-center gap-2"><Calendar size={14} className="text-gray-400"/> Year {termKey.split('/')[0]} / Term {termKey.split('/')[1]}</span>
+                                            <span className="text-xs font-bold bg-white border border-gray-200 px-2 py-1 rounded-md text-gray-600 shadow-sm">GPA: {calculateTermGPA(studentGrades[termKey])}</span>
                                         </div>
                                         <table className="w-full text-left">
                                             <tbody className="divide-y divide-gray-100">
@@ -521,9 +549,7 @@ export default function AdminPage() {
                                                         <td className="p-3 text-gray-500 font-mono font-bold w-20">{g.subject_code}</td>
                                                         <td className="p-3 font-bold text-gray-700">{g.subject_name}</td>
                                                         <td className="p-3 font-bold text-right w-16">
-                                                            <span className={`px-2 py-1 rounded-md ${g.grade === 'F' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
-                                                                {g.grade}
-                                                            </span>
+                                                            <span className={`px-2 py-1 rounded-md ${g.grade === 'Studying' ? 'bg-gray-100 text-gray-500' : g.grade === 'F' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>{g.grade}</span>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -535,65 +561,21 @@ export default function AdminPage() {
                         </div>
                     )}
 
-                    {/* TAB 3: ACTIVITY DASHBOARD (Yearly Progress - New Logic) */}
+                    {/* TAB 3: ACTIVITY */}
                     {modalTab === "activity" && (
                         <div className="space-y-6 animate-fade-in">
-                            {/* Progress Bars Section */}
-                            <div className="space-y-4 bg-white p-2">
-                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Yearly Goals (Target: 25h)</h4>
-                                {[1, 2, 3, 4].map(y => {
-                                    const hrs = activityProgress[y] || 0;
-                                    const percent = Math.min((hrs / 25) * 100, 100);
-                                    
-                                    // Logic สีหลอด: เขียว (ครบ), เหลือง (เริ่มทำ), เทา (ยังไม่ทำ)
-                                    let color = "bg-gray-200";
-                                    if (percent >= 100) color = "bg-green-500";
-                                    else if (percent > 0) color = "bg-yellow-400";
-
-                                    return (
-                                        <div key={y} className="flex items-center gap-3">
-                                            <div className="w-10 text-right">
-                                                <span className="text-xs font-bold text-gray-500">Year {y}</span>
-                                            </div>
-                                            <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden shadow-inner">
-                                                <div className={`h-full ${color} transition-all duration-700 ease-out`} style={{ width: `${percent}%` }}></div>
-                                            </div>
-                                            <div className="w-12 text-right">
-                                                <span className={`text-xs font-bold ${percent >= 100 ? 'text-green-600' : 'text-gray-600'}`}>{hrs}/25</span>
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                            
-                            <hr className="border-gray-100"/>
-
-                            {/* Activity History List */}
                             <div className="space-y-3">
-                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Activity Log</h4>
-                                {studentActivities.length === 0 ? (
-                                    <div className="text-center text-gray-300 text-xs italic py-4">No activities found.</div>
-                                ) : (
+                                {studentActivities.length === 0 ? <div className="text-center text-gray-300 text-xs italic py-4">No activities found.</div> : 
                                     studentActivities.map((act, i) => (
-                                        <div key={i} className="flex justify-between items-start bg-gray-50 p-3 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors">
-                                            <div>
-                                                <p className="text-sm font-bold text-gray-800">{act.name}</p>
-                                                <div className="flex gap-2 mt-1">
-                                                    <span className="text-[10px] font-bold bg-white border px-1.5 py-0.5 rounded text-gray-500 uppercase">{act.category}</span>
-                                                    <span className="text-[10px] font-bold text-gray-400 py-0.5">Year {act.academic_year}</span>
-                                                </div>
-                                                {act.description && <p className="text-xs text-gray-500 mt-2 italic">"{act.description}"</p>}
-                                            </div>
-                                            <div className="flex flex-col items-end gap-1">
-                                                <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded-lg">+{act.hours} Hrs</span>
-                                            </div>
+                                        <div key={i} className="flex justify-between items-start bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                            <div><p className="text-sm font-bold text-gray-800">{act.name}</p><span className="text-[10px] font-bold bg-white border px-1.5 py-0.5 rounded text-gray-500 uppercase">{act.category}</span></div>
+                                            <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded-lg">+{act.hours} Hrs</span>
                                         </div>
                                     ))
-                                )}
+                                }
                             </div>
                         </div>
                     )}
-
                 </div>
              </div>
         </div>
