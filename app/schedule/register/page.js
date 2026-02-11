@@ -1,184 +1,197 @@
 "use client";
 import { useState, useEffect } from "react";
-import { supabase } from "../../../lib/supabase"; 
+import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
 import { 
-  Calendar, Clock, MapPin, CheckCircle, AlertCircle, ArrowLeft, BookOpen, Loader2 
+  BookOpen, Clock, MapPin, User as UserIcon, 
+  CheckCircle, AlertCircle, Loader2, Filter 
 } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [userProfile, setUserProfile] = useState(null);
-  const [availableClasses, setAvailableClasses] = useState([]);
-  const [myEnrollments, setMyEnrollments] = useState([]); 
+  
+  // --- STATES ---
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [classes, setClasses] = useState([]);
+  const [enrolledClassIds, setEnrolledClassIds] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(null);
+  const [submittingId, setSubmittingId] = useState(null);
 
+  // --- FETCH DATA ---
   useEffect(() => {
     const initData = async () => {
+      // 1. Get User
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push("/login"); return; }
+      if (!user) { router.push("/register"); return; }
+      setUser(user);
 
-      // 1. ดึง Profile
+      // 2. Get Profile (Major & Year)
       const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-      setUserProfile(profile);
+      setProfile(profile);
 
-      // 2. ดึงวิชาที่ลงทะเบียนแล้ว
-      const { data: enrolled } = await supabase.from("enrollments").select("class_id").eq("user_id", user.id);
-      const enrolledIds = enrolled?.map(e => e.class_id) || [];
-      setMyEnrollments(enrolledIds);
+      // 3. Get Enrolled Classes (เช็คว่าลงอะไรไปแล้วบ้าง)
+      const { data: enrolls } = await supabase.from("enrollments").select("class_id").eq("user_id", user.id);
+      const enrolledIds = enrolls ? enrolls.map(e => e.class_id) : [];
+      setEnrolledClassIds(enrolledIds);
 
-      // 3. ดึงตารางเรียนทั้งหมด
-      const { data: classes, error } = await supabase
+      // 4. Get Open Classes (ดึงตรงจาก classes ไม่ต้อง Join subjects แล้ว)
+      // เรียงตามรหัสวิชา
+      const { data: classList, error } = await supabase
         .from("classes")
-        .select(`
-          *,
-          subjects ( name, credit ) 
-        `)
+        .select("*") 
         .order('subject_code', { ascending: true });
 
-      if (error) console.error("Error fetching classes:", error);
-      
-      // 4. กรองวิชาตาม Major
-      const filtered = (classes || []).filter(c => {
-        if (!profile) return true;
-        const code = c.subject_code.toUpperCase();
+      if (error) {
+        console.error("Error fetching classes:", error);
+      } else {
+        // 5. Filter Logic (กรองตาม Major)
+        const myMajor = profile?.major || "";
         
-        // วิชาสามัญเรียนได้ทุกคน
-        if (code.startsWith("GEN") || code.startsWith("LNG")) return true;
+        const filtered = classList.filter(cls => {
+            const code = cls.subject_code?.toUpperCase() || "";
+            const prefix = code.substring(0, 3);
 
-        // วิชาภาค (กรองตาม Major)
-        if (profile.major === "DSI" && code.startsWith("DSI")) return true;
-        if (profile.major === "CS" && (code.startsWith("CSC") || code.startsWith("CS"))) return true;
-        if (profile.major === "IT" && (code.startsWith("INT") || code.startsWith("IT"))) return true;
+            // กฎการมองเห็น (Visibility Rules)
+            const isGeneral = ["GEN", "LNG", "SSC"].includes(prefix); // วิชาเสรี/พื้นฐาน
+            const isIT = prefix === "INT" && myMajor === "IT";
+            const isCS = prefix === "CSC" && myMajor === "CS";
+            const isDSI = prefix === "DSI" && myMajor === "DSI";
 
-        return false;
-      });
+            return isGeneral || isIT || isCS || isDSI;
+        });
 
-      setAvailableClasses(filtered);
+        setClasses(filtered);
+      }
+      
       setLoading(false);
     };
 
     initData();
-  }, []);
+  }, [router]);
 
-  const handleEnroll = async (classId, subjectName) => {
-    if (!confirm(`Confirm registration for ${subjectName}?`)) return;
-    setSubmitting(classId);
+  // --- ENROLL ACTION ---
+  const handleEnroll = async (classItem) => {
+    // เช็คเงื่อนไขชั้นปี (Client-side Check)
+    const myYear = Number(profile?.year || 1);
+    const targetYear = Number(classItem.target_year || 0);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    if (targetYear !== 0 && targetYear !== myYear) {
+       return alert(`วิชานี้เปิดสำหรับนักศึกษาชั้นปีที่ ${targetYear} เท่านั้น`);
+    }
 
+    if (!confirm(`Confirm enrollment for ${classItem.subject_code}?`)) return;
+
+    setSubmittingId(classItem.id);
+
+    // Insert ลง Enrollments
     const { error } = await supabase.from("enrollments").insert({
       user_id: user.id,
-      class_id: classId,
-      status: 'enrolled'
+      class_id: classItem.id,
+      status: "enrolled",
+      grade: null // เกรดเริ่มต้นเป็น null
     });
 
     if (error) {
-      alert("Error: " + error.message);
+      alert("Failed to enroll: " + error.message);
     } else {
-      setMyEnrollments([...myEnrollments, classId]);
+      alert("Enrollment Successful! 🎉");
+      setEnrolledClassIds([...enrolledClassIds, classItem.id]); // Update state ทันที
       
-      // ส่ง Noti แจ้งเตือน
+      // Auto Notification
       await supabase.from("notifications").insert({
-        user_id: user.id,
-        title: "Registration Confirmed",
-        message: `ลงทะเบียนวิชา ${subjectName} เรียบร้อยแล้ว`,
-        type: "info"
+          user_id: user.id,
+          title: "Registration Confirmed",
+          message: `ลงทะเบียนวิชา ${classItem.subject_name} เรียบร้อยแล้ว`,
+          type: "info"
       });
     }
-    setSubmitting(null);
+    setSubmittingId(null);
   };
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-400 gap-2">
-      <Loader2 className="animate-spin"/> Loading Schedule...
-    </div>
-  );
+  if (loading) return <div className="min-h-screen flex items-center justify-center font-bold text-gray-400">Loading Classes...</div>;
 
   return (
-    // ✅ 1. เพิ่ม pt-24 เพื่อไม่ให้เนื้อหาโดน Header บังใน Mobile
-    <div className="min-h-screen bg-gray-50 pb-20 pt-24 md:pt-6">
+    <div className="min-h-screen bg-gray-50 pb-20">
       
       {/* Header */}
-      {/* ✅ 2. สร้างแถบสีขาวเต็มจอ (sticky) แต่เนื้อหาข้างในจัดกึ่งกลาง (max-w-5xl) */}
-      <div className="bg-white sticky top-0 z-10 shadow-sm border-b left-0 right-0">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                <ArrowLeft size={20} className="text-gray-600"/>
-            </button>
-            <div>
-                <h1 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                    <BookOpen size={18} className="text-blue-600"/> Course Registration
-                </h1>
-                {userProfile && (
-                    <p className="text-xs text-gray-500 font-medium">
-                    Student: <span className="text-blue-600">{userProfile.first_name}</span> | Major: <span className="bg-blue-100 text-blue-700 px-1.5 rounded">{userProfile.major}</span>
-                    </p>
-                )}
-            </div>
-        </div>
+      <div className="bg-white shadow-sm sticky top-0 z-20">
+          <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-3">
+              <BookOpen className="text-blue-600"/>
+              <div>
+                  <h1 className="text-xl font-bold text-gray-800">Course Registration</h1>
+                  <p className="text-xs text-gray-500">Student: <span className="font-bold text-blue-600">{profile?.first_name}</span> | Major: <span className="font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px]">{profile?.major}</span></p>
+              </div>
+          </div>
       </div>
 
-      {/* Course List */}
-      {/* ✅ 3. ใช้ max-w-5xl เพื่อให้ความกว้างเท่ากับ Header และหน้า Schedule */}
-      <div className="max-w-5xl mx-auto p-4 space-y-4 animate-fade-in">
-        {availableClasses.length === 0 ? (
-          <div className="text-center py-20 text-gray-400 flex flex-col items-center">
-            <AlertCircle className="mb-2 opacity-20" size={48}/>
-            <p>No classes open for your major yet.</p>
-          </div>
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        
+        {classes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                <Filter size={48} className="mb-4 opacity-20"/>
+                <p>No classes open for your major yet.</p>
+            </div>
         ) : (
-          availableClasses.map((cls) => {
-            const isEnrolled = myEnrollments.includes(cls.id);
-            const subjectName = cls.subjects?.name || "Unknown Subject"; 
-            const credit = cls.subjects?.credit || 3;
+            <div className="grid gap-6">
+                {classes.map((cls) => {
+                    const isEnrolled = enrolledClassIds.includes(cls.id);
+                    const myYear = Number(profile?.year || 1);
+                    const targetYear = Number(cls.target_year || 0);
+                    // เงื่อนไข: ลงทะเบียนไม่ได้ถ้าปีไม่ตรง (แต่ยังมองเห็น)
+                    const isLocked = targetYear !== 0 && targetYear !== myYear; 
 
-            return (
-              <div key={cls.id} className={`bg-white rounded-xl border p-5 shadow-sm transition-all duration-200 ${isEnrolled ? 'border-green-200 bg-green-50/20' : 'hover:shadow-md hover:border-blue-200'}`}>
-                
-                {/* Subject Header */}
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${isEnrolled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {cls.subject_code}
-                    </span>
-                    <h3 className="text-base font-bold text-gray-800 mt-1 leading-tight">{subjectName}</h3>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs font-bold text-gray-400 block">{credit} Credits</span>
-                  </div>
-                </div>
+                    return (
+                        <div key={cls.id} className={`bg-white rounded-2xl p-6 shadow-sm border transition-all ${isEnrolled ? "border-green-200 ring-1 ring-green-100" : isLocked ? "border-gray-200 opacity-60 grayscale-[0.5]" : "border-gray-100 hover:shadow-md"}`}>
+                            
+                            {/* Header Card */}
+                            <div className="flex justify-between items-start mb-4">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className={`text-xs font-bold px-2 py-1 rounded uppercase ${isEnrolled ? "bg-green-100 text-green-700" : "bg-blue-50 text-blue-600"}`}>
+                                            {cls.subject_code}
+                                        </span>
+                                        {targetYear > 0 && (
+                                            <span className="text-[10px] font-bold border border-orange-200 text-orange-500 px-2 py-0.5 rounded-full bg-orange-50">
+                                                Year {targetYear} Only
+                                            </span>
+                                        )}
+                                    </div>
+                                    <h3 className="text-lg font-bold text-gray-800">{cls.subject_name}</h3>
+                                </div>
+                                <span className="text-sm font-bold text-gray-400">{cls.credit || 3} Credits</span>
+                            </div>
 
-                {/* Class Details */}
-                <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs text-gray-600 mb-5 bg-gray-50 p-3 rounded-lg">
-                   <div className="flex items-center gap-2"><Calendar size={14} className="text-blue-500"/> <span className="font-medium">{cls.day_of_week}</span></div>
-                   <div className="flex items-center gap-2"><Clock size={14} className="text-orange-500"/> {cls.start_time?.slice(0,5)} - {cls.end_time?.slice(0,5)}</div>
-                   <div className="flex items-center gap-2"><MapPin size={14} className="text-red-500"/> {cls.room}</div>
-                   <div className="flex items-center gap-2 text-gray-500">👨‍🏫 {cls.lecturer}</div>
-                </div>
+                            {/* Details Grid */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-6 bg-gray-50 p-4 rounded-xl">
+                                <div className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-blue-500"><Clock size={16}/></div> <div><p className="text-[10px] text-gray-400 font-bold uppercase">Time</p><p className="font-bold">{cls.day_of_week} {cls.start_time?.slice(0,5)}-{cls.end_time?.slice(0,5)}</p></div></div>
+                                <div className="flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-red-500"><MapPin size={16}/></div> <div><p className="text-[10px] text-gray-400 font-bold uppercase">Room</p><p className="font-bold">{cls.room || "TBA"}</p></div></div>
+                                <div className="flex items-center gap-2 md:col-span-2"><div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-purple-500"><UserIcon size={16}/></div> <div><p className="text-[10px] text-gray-400 font-bold uppercase">Teacher</p><p className="font-bold">{cls.teacher || "Staff"}</p></div></div>
+                            </div>
 
-                {/* Action Button */}
-                <button 
-                  onClick={() => !isEnrolled && handleEnroll(cls.id, subjectName)}
-                  disabled={isEnrolled || submitting === cls.id}
-                  className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm
-                    ${isEnrolled 
-                      ? 'bg-green-100 text-green-700 cursor-default border border-green-200' 
-                      : 'bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-700 hover:to-blue-600 active:scale-95'}
-                  `}
-                >
-                  {submitting === cls.id ? (
-                    <><Loader2 size={16} className="animate-spin"/> Processing...</>
-                  ) : isEnrolled ? (
-                    <><CheckCircle size={16}/> Enrolled</>
-                  ) : (
-                    "Enroll Class"
-                  )}
-                </button>
-              </div>
-            );
-          })
+                            {/* Button Action */}
+                            {isEnrolled ? (
+                                <button disabled className="w-full py-3 rounded-xl bg-green-100 text-green-700 font-bold flex items-center justify-center gap-2 cursor-default">
+                                    <CheckCircle size={20}/> Enrolled
+                                </button>
+                            ) : isLocked ? (
+                                <button disabled className="w-full py-3 rounded-xl bg-gray-100 text-gray-400 font-bold flex items-center justify-center gap-2 cursor-not-allowed">
+                                    <AlertCircle size={20}/> Locked (Year {targetYear} Only)
+                                </button>
+                            ) : (
+                                <button 
+                                    onClick={() => handleEnroll(cls)} 
+                                    disabled={submittingId === cls.id}
+                                    className="w-full py-3 rounded-xl bg-gray-900 hover:bg-black text-white font-bold transition-all active:scale-[0.98] shadow-lg shadow-gray-200"
+                                >
+                                    {submittingId === cls.id ? <Loader2 className="animate-spin mx-auto"/> : "Enroll Class"}
+                                </button>
+                            )}
+
+                        </div>
+                    );
+                })}
+            </div>
         )}
       </div>
     </div>

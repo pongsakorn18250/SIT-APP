@@ -27,13 +27,14 @@ export default function SchedulePage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // ✅ แก้ Query ดึงข้อมูลจาก classes โดยตรง
     const { data, error } = await supabase
       .from("enrollments")
       .select(`
         id, grade, status,
         classes (
-          id, day_of_week, start_time, end_time, room, lecturer, exam_date,
-          subjects ( code, name, credit )
+          id, day_of_week, start_time, end_time, room, teacher, exam_date,
+          subject_code, subject_name, credit
         )
       `)
       .eq("user_id", user.id);
@@ -113,7 +114,7 @@ export default function SchedulePage() {
           {viewMode === "class" && (
               <div className="animate-fade-in">
                   
-                  {/* ✅ แก้ตรงนี้: ใช้ Grid 7 ช่อง เพื่อให้กางเต็มพื้นที่ */}
+                  {/* Grid Days */}
                   <div className="grid grid-cols-7 gap-2 md:gap-4 mb-8 w-full">
                       {days.map((day, index) => {
                           const isSelected = selectedDay === day;
@@ -160,20 +161,20 @@ export default function SchedulePage() {
                                       <div className="flex justify-between items-start mb-2">
                                           <div className="flex items-center gap-2">
                                               <span className="text-[10px] font-bold bg-gray-100 text-gray-600 px-2.5 py-1 rounded-lg uppercase tracking-wider">
-                                                  {item.classes.subjects?.code}
+                                                  {item.classes.subject_code}
                                               </span>
                                               <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">Lecture</span>
                                           </div>
-                                          <span className="text-xs font-bold text-gray-400">{item.classes.subjects?.credit} Credits</span>
+                                          <span className="text-xs font-bold text-gray-400">{item.classes.credit} Credits</span>
                                       </div>
                                       
                                       <h3 className="text-lg font-bold text-gray-800 mb-4 leading-tight">
-                                          {item.classes.subjects?.name}
+                                          {item.classes.subject_name}
                                       </h3>
                                       
                                       <div className="flex flex-wrap items-center gap-y-2 gap-x-6 text-sm text-gray-500 pt-3 border-t border-gray-50">
                                           <div className="flex items-center gap-2"><MapPin size={16} className="text-red-500"/> <span className="font-semibold text-gray-700">{item.classes.room}</span></div>
-                                          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div> Aj. {item.classes.lecturer}</div>
+                                          <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div> Aj. {item.classes.teacher}</div>
                                       </div>
                                   </div>
                               </div>
@@ -205,12 +206,12 @@ export default function SchedulePage() {
                                   {/* Right: Details */}
                                   <div className="flex-1 p-5">
                                       <div className="flex justify-between items-start mb-2">
-                                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{item.classes.subjects?.code}</span>
+                                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{item.classes.subject_code}</span>
                                           <span className="text-[10px] font-bold text-white bg-red-500 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-md shadow-red-200">
                                               <Clock size={12}/> {dateInfo.time}
                                           </span>
                                       </div>
-                                      <h3 className="text-base font-bold text-gray-800 mb-4 line-clamp-1 group-hover:text-red-600 transition-colors">{item.classes.subjects?.name}</h3>
+                                      <h3 className="text-base font-bold text-gray-800 mb-4 line-clamp-1 group-hover:text-red-600 transition-colors">{item.classes.subject_name}</h3>
                                       
                                       <div className="flex justify-between items-end text-xs pt-3 border-t border-gray-50">
                                           <span className="text-gray-500">Room: <b className="text-gray-800 text-sm">{item.classes.room}</b></span>
