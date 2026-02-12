@@ -15,7 +15,7 @@ export default function Home() {
   const [nextClass, setNextClass] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
-  const [gpax, setGpax] = useState("0.00"); // เพิ่ม State GPAX
+  const [gpax, setGpax] = useState("0.00");
   const [rooms, setRooms] = useState([]); 
   const [loading, setLoading] = useState(true);
 
@@ -31,26 +31,39 @@ export default function Home() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.replace("/register"); return; }
 
+      // 1. Get Profile
       const { data: profileData } = await supabase.from("profiles").select("*").eq("id", user.id).single();
       setProfile(profileData);
 
-      // 1. Fetch Stories
+      // 2. Get Enrollments (เพื่อเอา Class ID ของเรา)
+      const { data: myEnrolls } = await supabase.from("enrollments").select("class_id, grade").eq("user_id", user.id);
+      const myClassIds = myEnrolls ? myEnrolls.map(e => e.class_id) : [];
+
+      // 3. Fetch Stories (Global)
       const { data: annData } = await supabase.from("announcements").select("*").eq("is_active", true).order("created_at", { ascending: false });
       setAnnouncements(annData || []);
 
-      // 2. Fetch Assignments
-      const { data: assData } = await supabase.from("assignments").select("*, classes(subject_code, subject_name)").order("due_date", { ascending: true }).limit(5);
-      setAssignments(assData || []);
+      // 4. Fetch Assignments (เฉพาะวิชาที่ลง)
+      if (myClassIds.length > 0) {
+        const { data: assData } = await supabase.from("assignments")
+            .select("*, classes(subject_code, subject_name)")
+            .in("class_id", myClassIds) // ✅ กรองเฉพาะวิชาที่เราเรียน
+            .order("due_date", { ascending: true })
+            .limit(5);
+        setAssignments(assData || []);
+      }
 
-      // 3. Fetch Rooms
+      // 5. Fetch Rooms (Global)
       const { data: roomData } = await supabase.from("rooms").select("*").order("name");
       setRooms(roomData || []);
 
-      // 4. Calculate GPAX (Real Calculation)
-      calculateGPAX(user.id);
+      // 6. Calculate GPAX (จากเกรดของเรา)
+      calculateGPAX(myEnrolls, myClassIds);
 
-      // 5. Calculate Next Class
-      calculateNextClass(user.id);
+      // 7. Calculate Next Class (จากวิชาของเรา)
+      if (myClassIds.length > 0) {
+          calculateNextClass(myClassIds);
+      }
 
       setLoading(false);
     };
@@ -59,12 +72,9 @@ export default function Home() {
   }, []);
 
   // --- CALCULATE GPAX ---
-  const calculateGPAX = async (userId) => {
-    const { data: enrolls } = await supabase.from("enrollments").select("grade, class_id").eq("user_id", userId);
+  const calculateGPAX = async (enrolls, classIds) => {
     if (!enrolls || enrolls.length === 0) return setGpax("0.00");
 
-    // ต้องดึงหน่วยกิตมาด้วย
-    const classIds = enrolls.map(e => e.class_id);
     const { data: classes } = await supabase.from("classes").select("id, credit").in("id", classIds);
 
     let totalScore = 0;
@@ -74,7 +84,7 @@ export default function Home() {
     enrolls.forEach(e => {
         if (e.grade && map[e.grade] !== undefined) {
             const cls = classes?.find(c => c.id === e.class_id);
-            const credit = cls?.credit || 3; // Default 3 ถ้าหาไม่เจอ
+            const credit = cls?.credit || 3;
             totalScore += map[e.grade] * credit;
             totalCredit += credit;
         }
@@ -84,11 +94,8 @@ export default function Home() {
   };
 
   // --- CALCULATE NEXT CLASS ---
-  const calculateNextClass = async (userId) => {
-      const { data: enrolls } = await supabase.from("enrollments").select("class_id");
-      if (!enrolls || enrolls.length === 0) return;
-
-      const classIds = enrolls.map(e => e.class_id);
+  const calculateNextClass = async (classIds) => {
+      // ดึงรายละเอียดวิชา เฉพาะ ID ที่เรามี
       const { data: classes } = await supabase.from("classes").select("*").in("id", classIds);
 
       const dayMap = { "Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6 };
@@ -107,8 +114,10 @@ export default function Home() {
           const classStart = startH * 60 + startM;
           const classEnd = endH * 60 + endM;
 
+          // เช็คว่าวิชายังไม่จบ (เริ่มไปแล้วก็ได้ หรือกำลังจะเริ่ม)
           if (currentTime < classEnd) {
               const diff = classStart - currentTime;
+              // เลือกวิชาที่ใกล้ที่สุด และยังไม่จบ
               if (diff < minDiff) {
                   minDiff = diff;
                   upcoming = { ...cls, status: diff <= 0 ? "Now" : `in ${diff} min` };
@@ -124,11 +133,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 md:pb-10 pt-20"> 
-    {/* เพิ่ม pt-20 เพื่อหลบ MiniProfile */}
       
       <div className="p-6 space-y-6 max-w-lg mx-auto">
         
-        {/* 1. STORIES (ย้ายมาบนสุด) */}
+        {/* 1. STORIES */}
         <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
             <div className="flex flex-col items-center gap-1 shrink-0">
                 <div className="w-16 h-16 rounded-full border-2 border-dashed border-blue-300 flex items-center justify-center bg-blue-50 text-blue-400">
@@ -136,16 +144,24 @@ export default function Home() {
                 </div>
                 <span className="text-[10px] font-bold text-gray-500">Updates</span>
             </div>
-            {[1,2,3].map((i) => (
-                <div key={i} className="flex flex-col items-center gap-1 shrink-0 cursor-pointer hover:opacity-80 transition-opacity">
+            {announcements.length > 0 ? announcements.map((ann) => (
+                <div key={ann.id} className="flex flex-col items-center gap-1 shrink-0 cursor-pointer hover:opacity-80 transition-opacity">
                     <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-yellow-400 to-fuchsia-600">
                         <div className="w-full h-full rounded-full bg-white p-0.5">
-                            <img src={`https://picsum.photos/seed/${i}/200`} className="w-full h-full rounded-full object-cover"/>
+                            <img src={ann.image_url || `https://ui-avatars.com/api/?name=${ann.title}`} className="w-full h-full rounded-full object-cover"/>
                         </div>
                     </div>
-                    <span className="text-[10px] font-bold text-gray-600">SIT News</span>
+                    <span className="text-[10px] font-bold text-gray-600 truncate w-16 text-center">{ann.title}</span>
                 </div>
-            ))}
+            )) : (
+                [1,2,3].map((i) => (
+                    <div key={i} className="flex flex-col items-center gap-1 shrink-0 cursor-pointer hover:opacity-80 transition-opacity">
+                        <div className="w-16 h-16 rounded-full p-0.5 bg-gray-300">
+                             <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-xs text-gray-300">Empty</div>
+                        </div>
+                    </div>
+                ))
+            )}
         </div>
 
         {/* 2. NEXT CLASS HERO CARD */}
@@ -236,18 +252,11 @@ export default function Home() {
       </div>
 
       {/* --- MODALS --- */}
-
-      {/* 1. STUDENT CARD MODAL (Fix Layout) */}
-     {/* 1. STUDENT CARD MODAL (Fix Logo & Layout) */}
-    {/* 1. STUDENT CARD MODAL (Final Fix) */}
       {showCardModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fade-in" onClick={() => setShowCardModal(false)}>
             <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl relative flex flex-col" onClick={e => e.stopPropagation()}>
-                
-                {/* Header สีน้ำเงิน */}
                 <div className="bg-blue-600 h-32 relative p-5 flex justify-between items-start shrink-0">
                     <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
-                        {/* โลโก้ KMUTT (ใช้ SVG ที่เสถียรกว่า หรือ Text ถ้าโหลดไม่ได้) */}
                         <span className="text-white font-bold text-xs tracking-widest">KMUTT</span>
                     </div>
                     <div className="text-right text-white/90">
@@ -255,20 +264,12 @@ export default function Home() {
                         <p className="text-[10px] opacity-75">SIT Faculty</p>
                     </div>
                 </div>
-
-                {/* เนื้อหาบัตร (ดันขึ้นไปซ้อน Header นิดนึงเพื่อให้สวย) */}
                 <div className="px-6 pb-8 text-center -mt-16 relative z-10 flex flex-col items-center">
-                    
-                    {/* รูปโปรไฟล์ */}
                     <div className="w-28 h-28 rounded-full border-4 border-white bg-gray-200 shadow-lg overflow-hidden mb-3 shrink-0">
                         <img src={profile?.avatar} className="w-full h-full object-cover"/>
                     </div>
-                    
-                    {/* ชื่อและสาขา */}
                     <h2 className="text-2xl font-extrabold text-gray-800 leading-tight mb-1">{profile?.first_name}</h2>
                     <p className="text-gray-500 font-bold text-sm mb-6 bg-gray-100 px-3 py-1 rounded-full">{profile?.major} Student</p>
-
-                    {/* กล่อง QR Code */}
                     <div className="bg-white border-2 border-dashed border-gray-200 p-4 rounded-xl w-full flex flex-col items-center gap-2 shadow-sm">
                         <p className="text-2xl font-mono font-bold text-blue-600 tracking-widest">{getStudentIdDisplay()}</p>
                         <div className="bg-white p-1">
@@ -277,25 +278,21 @@ export default function Home() {
                         <p className="text-[9px] text-gray-400 uppercase tracking-wide mt-1">Scan to Verify</p>
                     </div>
                 </div>
-
             </div>
         </div>
       )}
 
-      {/* 2. GPAX MODAL (Real Data) */}
       {showGPAModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowGPAModal(false)}>
             <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full animate-pop-in" onClick={e => e.stopPropagation()}>
                 <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4 text-purple-600"><Award size={32}/></div>
                 <h3 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-1">Current GPAX</h3>
-                {/* โชว์เกรดจริง */}
                 <p className="text-5xl font-extrabold text-gray-800 mb-6">{gpax}</p> 
                 <button onClick={() => { setShowGPAModal(false); router.push('/profile'); }} className="w-full py-3 bg-gray-100 rounded-xl font-bold text-gray-600 hover:bg-gray-200">View Transcript</button>
             </div>
         </div>
       )}
 
-      {/* 3. PASS KEY (QR) MODAL */}
       {showQRModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowQRModal(false)}>
             <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full" onClick={e => e.stopPropagation()}>
@@ -308,7 +305,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 4. LAB STATUS MODAL */}
       {showLabModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowLabModal(false)}>
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[70vh]" onClick={e => e.stopPropagation()}>

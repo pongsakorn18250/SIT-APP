@@ -96,7 +96,6 @@ export default function AdminPage() {
   }, []);
 
   const fetchClasses = async () => {
-      // ดึงจาก classes โดยตรง
       const { data } = await supabase.from("classes").select("*").order("subject_code", { ascending: true });
       setAllClasses(data || []);
   };
@@ -109,7 +108,6 @@ export default function AdminPage() {
       if (foundStudent) setActYear(Number(foundStudent.year) || 1);
 
       if (id) {
-        // ดึงข้อมูล Enrollment พร้อม Classes
         const { data: enrolls } = await supabase.from("enrollments").select("id, grade, status, class_id").eq("user_id", id);
         
         if (enrolls && enrolls.length > 0) {
@@ -133,7 +131,7 @@ export default function AdminPage() {
       }
   };
 
-  // --- VIEW USER DETAIL (Transcript Fix) ---
+  // --- VIEW USER DETAIL ---
   const handleViewUser = async (user) => {
     setLoading(true);
     
@@ -220,27 +218,39 @@ export default function AdminPage() {
       if(!error) { alert("Removed!"); handleViewUser(viewingUser); } 
   };
 
-  // ✅ ACTION: ADD CLASS
+  // ✅ ACTION: ADD CLASS (FIXED: Time Validation)
   const handleAddClass = async () => {
-      if(!planForm.subject_code || !planForm.subject_name) return alert("Please fill Subject Code and Name");
+      // 1. Validation Logic
+      if(!planForm.subject_code || !planForm.subject_name) {
+          return alert("Please fill Subject Code and Name");
+      }
+      if(!planForm.start_time || !planForm.end_time) {
+          return alert("Please fill Start Time and End Time");
+      }
+
       setIsSubmitting(true);
       
       const { error } = await supabase.from("classes").insert({
           subject_code: planForm.subject_code.toUpperCase(),
           subject_name: planForm.subject_name,
-          credit: Number(planForm.credit),
-          target_year: Number(planForm.target_year),
+          credit: Number(planForm.credit) || 3,
+          target_year: Number(planForm.target_year) || 0,
           day_of_week: planForm.day_of_week,
           start_time: planForm.start_time,
           end_time: planForm.end_time,
-          room: planForm.room,
-          teacher: planForm.teacher,
-          semester: planForm.semester
+          room: planForm.room || "TBA",
+          teacher: planForm.teacher || "Staff",
+          semester: planForm.semester || "1/2026"
       });
 
       if(!error) { 
           alert("Class Opened! 🎉"); 
-          setPlanForm({ ...planForm, subject_code: "", subject_name: "" }); 
+          // Reset only text fields, keep basic settings
+          setPlanForm({ 
+              ...planForm, 
+              subject_code: "", 
+              subject_name: "" 
+          }); 
           fetchClasses(); 
       } else { 
           alert("Error: " + error.message); 
@@ -254,18 +264,18 @@ export default function AdminPage() {
       if(!error) fetchClasses();
   };
 
-  // ✅ FIXED: Save Grade + Send Notification
+  // ✅ ACTION: SAVE GRADE (FIXED: With Notification)
   const handleSaveGrade = async () => {
     if (!selectedUserId || !selectedEnrollmentId) return alert("Select student & class");
     setIsSubmitting(true);
     const { error } = await supabase.from("enrollments").update({ grade: grade, status: 'completed' }).eq("id", selectedEnrollmentId);
     
     if (!error) { 
-        // 1. หาข้อมูลวิชาเพื่อใส่ใน Noti
+        // 1. Find subject info
         const targetEnrollment = studentEnrollments.find(e => e.id === selectedEnrollmentId);
-        const subjectName = targetEnrollment?.classes?.subject_name || targetEnrollment?.classes?.subject_code || "วิชา (ไม่ระบุ)";
+        const subjectName = targetEnrollment?.classes?.subject_name || targetEnrollment?.classes?.subject_code || "Unknown Subject";
 
-        // 2. Insert Notification
+        // 2. Send Notification
         await supabase.from("notifications").insert({
             user_id: selectedUserId,
             title: "Grade Released 🎓",
@@ -282,7 +292,7 @@ export default function AdminPage() {
     setIsSubmitting(false);
   };
 
-  // ✅ FIXED: Add Activity + Send Notification
+  // ✅ ACTION: ADD ACTIVITY (FIXED: With Notification)
   const handleAddActivity = async () => { 
       if (!selectedUserId || !actName) return alert("Fill data");
       setIsSubmitting(true);
@@ -291,7 +301,7 @@ export default function AdminPage() {
           date: new Date(), academic_year: actYear, description: actDesc 
       });
       if(!error) { 
-          // 2. Insert Notification
+          // 2. Send Notification
           await supabase.from("notifications").insert({
               user_id: selectedUserId,
               title: "Activity Recorded 🏆",
