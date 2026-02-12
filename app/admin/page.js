@@ -35,7 +35,7 @@ export default function AdminPage() {
   const [targetStudent, setTargetStudent] = useState(null);
   const [grade, setGrade] = useState("A");
 
-  // Plan Form
+  // Plan Form (เพิ่มวิชา)
   const [planForm, setPlanForm] = useState({
       subject_code: "",
       subject_name: "",
@@ -96,6 +96,7 @@ export default function AdminPage() {
   }, []);
 
   const fetchClasses = async () => {
+      // ดึงจาก classes โดยตรง
       const { data } = await supabase.from("classes").select("*").order("subject_code", { ascending: true });
       setAllClasses(data || []);
   };
@@ -108,6 +109,7 @@ export default function AdminPage() {
       if (foundStudent) setActYear(Number(foundStudent.year) || 1);
 
       if (id) {
+        // ดึงข้อมูล Enrollment พร้อม Classes
         const { data: enrolls } = await supabase.from("enrollments").select("id, grade, status, class_id").eq("user_id", id);
         
         if (enrolls && enrolls.length > 0) {
@@ -131,7 +133,7 @@ export default function AdminPage() {
       }
   };
 
-  // --- VIEW USER DETAIL ---
+  // --- VIEW USER DETAIL (Transcript Fix) ---
   const handleViewUser = async (user) => {
     setLoading(true);
     
@@ -145,10 +147,11 @@ export default function AdminPage() {
         
         processedGrades = enrolls.map(e => {
             const cls = classesData?.find(c => c.id === e.class_id);
+            
             let derivedYear = cls?.target_year;
             if (!derivedYear || derivedYear === 0) {
                 const codeNum = cls?.subject_code?.match(/\d+/)?.[0]; 
-                derivedYear = codeNum ? parseInt(codeNum.substring(0, 1)) : 1;
+                derivedYear = codeNum ? parseInt(codeNum.substring(0, 1)) : 1; 
             }
 
             return {
@@ -162,6 +165,7 @@ export default function AdminPage() {
         });
     }
 
+    // Grouping
     const groupedGrades = {};
     let totalScore = 0, totalCredit = 0;
     const gradeMap = { "A": 4, "B+": 3.5, "B": 3, "C+": 2.5, "C": 2, "D+": 1.5, "D": 1, "F": 0 };
@@ -216,6 +220,7 @@ export default function AdminPage() {
       if(!error) { alert("Removed!"); handleViewUser(viewingUser); } 
   };
 
+  // ✅ ACTION: ADD CLASS
   const handleAddClass = async () => {
       if(!planForm.subject_code || !planForm.subject_name) return alert("Please fill Subject Code and Name");
       setIsSubmitting(true);
@@ -249,32 +254,35 @@ export default function AdminPage() {
       if(!error) fetchClasses();
   };
 
-  // ✅ แก้ไข: เพิ่ม Notification เมื่อลงเกรด
+  // ✅ FIXED: Save Grade + Send Notification
   const handleSaveGrade = async () => {
     if (!selectedUserId || !selectedEnrollmentId) return alert("Select student & class");
     setIsSubmitting(true);
     const { error } = await supabase.from("enrollments").update({ grade: grade, status: 'completed' }).eq("id", selectedEnrollmentId);
     
     if (!error) { 
-        // 1. หาข้อมูลวิชาเพื่อมาใส่ใน Noti
+        // 1. หาข้อมูลวิชาเพื่อใส่ใน Noti
         const targetEnrollment = studentEnrollments.find(e => e.id === selectedEnrollmentId);
-        const subjectName = targetEnrollment?.classes?.subject_name || targetEnrollment?.classes?.subject_code || "Unknown Subject";
+        const subjectName = targetEnrollment?.classes?.subject_name || targetEnrollment?.classes?.subject_code || "วิชา (ไม่ระบุ)";
 
-        // 2. Insert ลง Notification
+        // 2. Insert Notification
         await supabase.from("notifications").insert({
             user_id: selectedUserId,
             title: "Grade Released 🎓",
-            message: `วิชา ${subjectName} เกรดออกแล้ว! คุณได้เกรด: ${grade}`,
+            message: `เกรดวิชา ${subjectName} ออกแล้ว! คุณได้เกรด: ${grade}`,
             type: "grade",
             is_read: false
         });
 
         alert("Grade Updated & Notified! ✅"); 
         handleSelectStudent(selectedUserId); 
+    } else {
+        alert("Error: " + error.message);
     }
     setIsSubmitting(false);
   };
 
+  // ✅ FIXED: Add Activity + Send Notification
   const handleAddActivity = async () => { 
       if (!selectedUserId || !actName) return alert("Fill data");
       setIsSubmitting(true);
@@ -282,17 +290,20 @@ export default function AdminPage() {
           user_id: selectedUserId, name: actName, hours: actHours, category: actCategory, 
           date: new Date(), academic_year: actYear, description: actDesc 
       });
-      if(!error) {
-          // ✅ เพิ่ม Noti กิจกรรมด้วย
+      if(!error) { 
+          // 2. Insert Notification
           await supabase.from("notifications").insert({
-            user_id: selectedUserId,
-            title: "Activity Recorded 🏆",
-            message: `บันทึกกิจกรรม: ${actName} (+${actHours} hrs)`,
-            type: "activity",
-            is_read: false
+              user_id: selectedUserId,
+              title: "Activity Recorded 🏆",
+              message: `บันทึกกิจกรรม "${actName}" เรียบร้อย! (+${actHours} ชม.)`,
+              type: "activity",
+              is_read: false
           });
-          alert("Activity Added & Notified!"); 
+
+          alert("Activity Added & Notified! ✅"); 
           setActName(""); setActDesc(""); 
+      } else {
+          alert("Error: " + error.message);
       }
       setIsSubmitting(false);
   };
