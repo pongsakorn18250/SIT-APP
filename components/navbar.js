@@ -81,14 +81,6 @@ export default function Navbar() {
 
   return (
     <>
-      {/* ================= ✅ MOBILE MINI PROFILE (FIXED 100%) ================= */}
-      {/* เทคนิคแก้: 
-          1. แยกก้อนนี้ออกมาอยู่นอกสุด (ไม่ซ้อน div อื่น)
-          2. ใช้ style={{ position: 'fixed' }} เพื่อบังคับ
-          3. ลบ animate-fade-in ที่ตัวแม่ทิ้ง
-      */}
-      
-
       {/* ================= MOBILE BOTTOM NAV ================= */}
       <div className="md:hidden">
         <nav className={`fixed bottom-0 w-full border-t flex justify-around py-3 pb-6 z-40 text-xs font-bold transition-colors backdrop-blur-xl ${theme.bgNav} ${theme.border} ${theme.textLight}`}>
@@ -109,22 +101,26 @@ export default function Navbar() {
         </nav>
       </div>
 
-      {/* ================= DESKTOP SIDEBAR ================= */}
-      <div className={`hidden md:flex flex-col w-64 h-screen border-r fixed left-0 top-0 p-6 z-50 transition-colors ${theme.bgMain} ${theme.border}`}>
-        <div className="flex items-center gap-3 mb-10 pl-2">
-            <div className="w-12 h-12 rounded-full bg-white shadow-sm overflow-hidden relative">
+      {/* ================= DESKTOP SIDEBAR (FIXED FOR IPAD) ================= */}
+      {/* ✅ แก้: ใช้ h-[100dvh] และ overflow-y-auto เพื่อให้ไม่ตกขอบ */}
+      <div className={`hidden md:flex flex-col w-64 h-[100dvh] border-r fixed left-0 top-0 p-6 z-50 transition-colors overflow-y-auto ${theme.bgMain} ${theme.border}`}>
+        
+        {/* Profile Header */}
+        <div className="flex items-center gap-3 mb-10 pl-2 shrink-0">
+            <div className="w-12 h-12 rounded-full bg-white shadow-sm overflow-hidden relative shrink-0">
                 <img src={profile?.avatar} className="w-full h-full object-cover" />
                 {profile?.role === 'OWNER' && <div className="absolute top-0 right-0 bg-yellow-400 rounded-full p-0.5 border border-white"><Crown size={8} className="text-white fill-white"/></div>}
             </div>
-            <div>
-                <p className="font-bold text-gray-800 text-lg leading-tight">{profile?.first_name}</p>
-                <p className={`text-xs font-bold ${theme.text}`}>
+            <div className="overflow-hidden">
+                <p className="font-bold text-gray-800 text-lg leading-tight truncate">{profile?.first_name}</p>
+                <p className={`text-xs font-bold ${theme.text} truncate`}>
                     {isAdmin ? profile?.role : `${profile?.major} #${getStudentIdDisplay()}`}
                 </p>
             </div>
         </div>
 
-        <nav className="flex-1 space-y-1">
+        {/* Menu Items (ยืดหยุ่น) */}
+        <nav className="flex-1 space-y-1 mb-6">
           {isAdmin ? (
              <>
                 <NavItemDesktop href="/admin" icon={ShieldAlert} label="Admin Console" active={pathname === "/admin"} theme={theme} />
@@ -141,9 +137,12 @@ export default function Navbar() {
           )}
         </nav>
 
-        <button onClick={() => setShowLogoutConfirm(true)} className="flex items-center gap-3 p-3 rounded-xl text-red-500 font-bold hover:bg-red-50 transition-all mt-auto pl-4 group">
-            <LogOut size={20} className="group-hover:-translate-x-1 transition-transform" /> Logout
-        </button>
+        {/* Logout Button (ดันลงล่างสุด แต่ไม่ตกขอบ) */}
+        <div className="shrink-0 mt-auto pt-4 border-t border-gray-200/50">
+            <button onClick={() => setShowLogoutConfirm(true)} className="flex items-center gap-3 p-3 w-full rounded-xl text-red-500 font-bold hover:bg-red-50 transition-all group">
+                <LogOut size={20} className="group-hover:-translate-x-1 transition-transform" /> Logout
+            </button>
+        </div>
       </div>
 
       {/* ================= MODALS ================= */}
@@ -174,7 +173,7 @@ export default function Navbar() {
 
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center relative overflow-hidden">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center relative overflow-hidden animate-pop-in">
                 <div className={`w-32 h-32 mx-auto mb-4 rounded-full border-4 border-white shadow-lg animate-bounce ${theme.bgMain}`}>
                     <img src={profile?.avatar} className="w-full h-full object-cover" />
                 </div>
