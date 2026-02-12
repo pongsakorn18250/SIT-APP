@@ -24,15 +24,37 @@ export default function MiniProfile() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // 1. Fetch function แยกออกมาเพื่อให้เรียกใช้ซ้ำได้
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-        if (data?.role !== 'STUDENT') setIsAdmin(true);
-        setProfile(data);
+        if (data) {
+            setIsAdmin(data.role !== 'STUDENT');
+            setProfile(data);
+        }
+      } else {
+        setProfile(null); // Clear profile if no user
       }
     };
+
+    // 2. เรียกครั้งแรกตอน Load
     fetchUser();
+
+    // 3. ✅ เพิ่ม Listener ดักจับการ Login/Logout แบบ Real-time
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            fetchUser(); // ดึงข้อมูลใหม่ทันที
+        } else if (event === 'SIGNED_OUT') {
+            setProfile(null);
+            setIsAdmin(false);
+        }
+    });
+
+    // Cleanup Listener
+    return () => {
+        subscription.unsubscribe();
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -47,7 +69,7 @@ export default function MiniProfile() {
     setProfile({ ...profile, avatar: newUrl });
     setShowAvatarModal(false);
     setLoading(false);
-    window.location.reload();
+    // ไม่ต้อง window.location.reload() แล้ว เพราะ State อัปเดตเอง
   };
 
   const getStudentIdDisplay = () => profile?.student_id ? String(profile.student_id).slice(-3) : "???";
@@ -66,7 +88,6 @@ export default function MiniProfile() {
 
   return (
     <>
-      {/* ⚠️ แก้ตรงนี้: เปลี่ยน fixed -> absolute (จะได้เหมือน Noti) */}
       <div className="md:hidden absolute top-4 left-4 z-[50]">
         <div className="relative">
             <button 

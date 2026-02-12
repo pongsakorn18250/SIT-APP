@@ -35,7 +35,7 @@ export default function AdminPage() {
   const [targetStudent, setTargetStudent] = useState(null);
   const [grade, setGrade] = useState("A");
 
-  // Plan Form (เพิ่มวิชา)
+  // Plan Form
   const [planForm, setPlanForm] = useState({
       subject_code: "",
       subject_name: "",
@@ -96,7 +96,6 @@ export default function AdminPage() {
   }, []);
 
   const fetchClasses = async () => {
-      // ดึงจาก classes โดยตรง (เพราะเราจะบันทึกชื่อลง classes แล้ว)
       const { data } = await supabase.from("classes").select("*").order("subject_code", { ascending: true });
       setAllClasses(data || []);
   };
@@ -109,7 +108,6 @@ export default function AdminPage() {
       if (foundStudent) setActYear(Number(foundStudent.year) || 1);
 
       if (id) {
-        // ดึงข้อมูล Enrollment พร้อม Classes
         const { data: enrolls } = await supabase.from("enrollments").select("id, grade, status, class_id").eq("user_id", id);
         
         if (enrolls && enrolls.length > 0) {
@@ -133,7 +131,7 @@ export default function AdminPage() {
       }
   };
 
-  // --- VIEW USER DETAIL (Transcript Fix) ---
+  // --- VIEW USER DETAIL ---
   const handleViewUser = async (user) => {
     setLoading(true);
     
@@ -147,12 +145,10 @@ export default function AdminPage() {
         
         processedGrades = enrolls.map(e => {
             const cls = classesData?.find(c => c.id === e.class_id);
-            
-            // ✅ Logic ปีการศึกษา: ถ้า target_year = 0 ให้เดาจากรหัสวิชา (เช่น DSI354 -> 3)
             let derivedYear = cls?.target_year;
             if (!derivedYear || derivedYear === 0) {
                 const codeNum = cls?.subject_code?.match(/\d+/)?.[0]; 
-                derivedYear = codeNum ? parseInt(codeNum.substring(0, 1)) : 1; // DSI3xx -> Year 3
+                derivedYear = codeNum ? parseInt(codeNum.substring(0, 1)) : 1;
             }
 
             return {
@@ -166,15 +162,13 @@ export default function AdminPage() {
         });
     }
 
-    // Grouping
     const groupedGrades = {};
     let totalScore = 0, totalCredit = 0;
     const gradeMap = { "A": 4, "B+": 3.5, "B": 3, "C+": 2.5, "C": 2, "D+": 1.5, "D": 1, "F": 0 };
     
     processedGrades.forEach(g => {
-        // Group Key: Year X / Sem Y
         const term = g.semester ? g.semester.split('/')[0] : '1';
-        const key = `Year ${g.derived_year} / Sem ${term}`; // ใช้ derived_year ที่คำนวณมา
+        const key = `Year ${g.derived_year} / Sem ${term}`;
 
         if (!groupedGrades[key]) groupedGrades[key] = [];
         groupedGrades[key].push(g);
@@ -222,27 +216,25 @@ export default function AdminPage() {
       if(!error) { alert("Removed!"); handleViewUser(viewingUser); } 
   };
 
-  // ✅ ACTION: ADD CLASS (Fix: บันทึกข้อมูลลง DB ให้ครบ & ถูกชื่อคอลัมน์)
   const handleAddClass = async () => {
       if(!planForm.subject_code || !planForm.subject_name) return alert("Please fill Subject Code and Name");
       setIsSubmitting(true);
       
       const { error } = await supabase.from("classes").insert({
           subject_code: planForm.subject_code.toUpperCase(),
-          subject_name: planForm.subject_name, // บันทึกชื่อวิชา
-          credit: Number(planForm.credit),     // บันทึกหน่วยกิต
-          target_year: Number(planForm.target_year), // บันทึกปีเป้าหมาย
+          subject_name: planForm.subject_name,
+          credit: Number(planForm.credit),
+          target_year: Number(planForm.target_year),
           day_of_week: planForm.day_of_week,
           start_time: planForm.start_time,
           end_time: planForm.end_time,
           room: planForm.room,
-          teacher: planForm.teacher, // ✅ แก้จาก lecturer เป็น teacher
+          teacher: planForm.teacher,
           semester: planForm.semester
       });
 
       if(!error) { 
           alert("Class Opened! 🎉"); 
-          // Reset form บางส่วน
           setPlanForm({ ...planForm, subject_code: "", subject_name: "" }); 
           fetchClasses(); 
       } else { 
@@ -257,12 +249,28 @@ export default function AdminPage() {
       if(!error) fetchClasses();
   };
 
+  // ✅ แก้ไข: เพิ่ม Notification เมื่อลงเกรด
   const handleSaveGrade = async () => {
     if (!selectedUserId || !selectedEnrollmentId) return alert("Select student & class");
     setIsSubmitting(true);
     const { error } = await supabase.from("enrollments").update({ grade: grade, status: 'completed' }).eq("id", selectedEnrollmentId);
+    
     if (!error) { 
-        alert("Grade Updated! ✅"); handleSelectStudent(selectedUserId); 
+        // 1. หาข้อมูลวิชาเพื่อมาใส่ใน Noti
+        const targetEnrollment = studentEnrollments.find(e => e.id === selectedEnrollmentId);
+        const subjectName = targetEnrollment?.classes?.subject_name || targetEnrollment?.classes?.subject_code || "Unknown Subject";
+
+        // 2. Insert ลง Notification
+        await supabase.from("notifications").insert({
+            user_id: selectedUserId,
+            title: "Grade Released 🎓",
+            message: `วิชา ${subjectName} เกรดออกแล้ว! คุณได้เกรด: ${grade}`,
+            type: "grade",
+            is_read: false
+        });
+
+        alert("Grade Updated & Notified! ✅"); 
+        handleSelectStudent(selectedUserId); 
     }
     setIsSubmitting(false);
   };
@@ -274,7 +282,18 @@ export default function AdminPage() {
           user_id: selectedUserId, name: actName, hours: actHours, category: actCategory, 
           date: new Date(), academic_year: actYear, description: actDesc 
       });
-      if(!error) { alert("Activity Added!"); setActName(""); setActDesc(""); }
+      if(!error) {
+          // ✅ เพิ่ม Noti กิจกรรมด้วย
+          await supabase.from("notifications").insert({
+            user_id: selectedUserId,
+            title: "Activity Recorded 🏆",
+            message: `บันทึกกิจกรรม: ${actName} (+${actHours} hrs)`,
+            type: "activity",
+            is_read: false
+          });
+          alert("Activity Added & Notified!"); 
+          setActName(""); setActDesc(""); 
+      }
       setIsSubmitting(false);
   };
 

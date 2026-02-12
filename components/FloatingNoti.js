@@ -134,7 +134,7 @@ export default function FloatingNoti() {
   };
 
   // --- Check Page Visibility (อยู่ล่างสุดเสมอ) ---
-  if (["/profile", "/login", "/register" , "/schedule/register"].includes(pathname)) return null;
+  if (["/profile", "/login", "/register" , "/schedule/register","/select-character","/select-major","/select-role","/admin"].includes(pathname)) return null;
 
   return (
     <>
