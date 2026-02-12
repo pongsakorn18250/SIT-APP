@@ -1,93 +1,351 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
-import { supabase } from "../lib/supabase"; // เช็ค path ให้ตรง (น่าจะ ../lib/supabase)
-import { Loader2, Crown, ShieldAlert } from "lucide-react";
+import { 
+  MapPin, QrCode, CreditCard, Award, Zap, ChevronRight, 
+  BookOpen, Monitor, X, Loader2
+} from "lucide-react";
 
 export default function Home() {
   const router = useRouter();
+  
+  // --- STATES ---
+  const [profile, setProfile] = useState(null);
+  const [nextClass, setNextClass] = useState(null);
+  const [assignments, setAssignments] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [gpax, setGpax] = useState("0.00"); // เพิ่ม State GPAX
+  const [rooms, setRooms] = useState([]); 
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
-  const [role, setRole] = useState("STUDENT");
 
+  // Modals
+  const [showCardModal, setShowCardModal] = useState(false);
+  const [showGPAModal, setShowGPAModal] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [showLabModal, setShowLabModal] = useState(false);
+
+  // --- FETCH DATA ---
   useEffect(() => {
-    const checkUser = async () => {
-      // 1. เช็ค Session ปัจจุบัน
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        // ❌ ถ้ายังไม่ Login -> ดีดไปหน้า Register ทันที!
-        router.replace("/register");
-        return;
-      }
+    const initData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.replace("/register"); return; }
 
-      // ✅ ถ้า Login แล้ว -> ให้ดึงข้อมูลมาโชว์หน้า Home
-      setUser(session.user);
-      
-      // ดึง Role มาโชว์เท่ๆ
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", session.user.id)
-        .single();
-      
-      if (profile) setRole(profile.role);
-      
+      const { data: profileData } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+      setProfile(profileData);
+
+      // 1. Fetch Stories
+      const { data: annData } = await supabase.from("announcements").select("*").eq("is_active", true).order("created_at", { ascending: false });
+      setAnnouncements(annData || []);
+
+      // 2. Fetch Assignments
+      const { data: assData } = await supabase.from("assignments").select("*, classes(subject_code, subject_name)").order("due_date", { ascending: true }).limit(5);
+      setAssignments(assData || []);
+
+      // 3. Fetch Rooms
+      const { data: roomData } = await supabase.from("rooms").select("*").order("name");
+      setRooms(roomData || []);
+
+      // 4. Calculate GPAX (Real Calculation)
+      calculateGPAX(user.id);
+
+      // 5. Calculate Next Class
+      calculateNextClass(user.id);
+
       setLoading(false);
     };
 
-    checkUser();
-  }, [router]);
+    initData();
+  }, []);
 
-  // ตอนกำลังเช็ค Login ให้หมุนๆ รอไปก่อน
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="animate-spin text-blue-600" size={48} />
-      </div>
-    );
-  }
+  // --- CALCULATE GPAX ---
+  const calculateGPAX = async (userId) => {
+    const { data: enrolls } = await supabase.from("enrollments").select("grade, class_id").eq("user_id", userId);
+    if (!enrolls || enrolls.length === 0) return setGpax("0.00");
 
-  // --- ส่วนนี้จะโชว์เฉพาะคนที่ Login แล้วเท่านั้น (Dashboard) ---
+    // ต้องดึงหน่วยกิตมาด้วย
+    const classIds = enrolls.map(e => e.class_id);
+    const { data: classes } = await supabase.from("classes").select("id, credit").in("id", classIds);
+
+    let totalScore = 0;
+    let totalCredit = 0;
+    const map = { "A": 4, "B+": 3.5, "B": 3, "C+": 2.5, "C": 2, "D+": 1.5, "D": 1, "F": 0 };
+
+    enrolls.forEach(e => {
+        if (e.grade && map[e.grade] !== undefined) {
+            const cls = classes?.find(c => c.id === e.class_id);
+            const credit = cls?.credit || 3; // Default 3 ถ้าหาไม่เจอ
+            totalScore += map[e.grade] * credit;
+            totalCredit += credit;
+        }
+    });
+
+    setGpax(totalCredit > 0 ? (totalScore / totalCredit).toFixed(2) : "0.00");
+  };
+
+  // --- CALCULATE NEXT CLASS ---
+  const calculateNextClass = async (userId) => {
+      const { data: enrolls } = await supabase.from("enrollments").select("class_id");
+      if (!enrolls || enrolls.length === 0) return;
+
+      const classIds = enrolls.map(e => e.class_id);
+      const { data: classes } = await supabase.from("classes").select("*").in("id", classIds);
+
+      const dayMap = { "Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6 };
+      const now = new Date();
+      const currentDay = now.getDay();
+      const currentTime = now.getHours() * 60 + now.getMinutes();
+
+      const todaysClasses = classes?.filter(c => dayMap[c.day_of_week] === currentDay);
+      
+      let upcoming = null;
+      let minDiff = Infinity;
+
+      todaysClasses?.forEach(cls => {
+          const [startH, startM] = cls.start_time.split(':').map(Number);
+          const [endH, endM] = cls.end_time.split(':').map(Number);
+          const classStart = startH * 60 + startM;
+          const classEnd = endH * 60 + endM;
+
+          if (currentTime < classEnd) {
+              const diff = classStart - currentTime;
+              if (diff < minDiff) {
+                  minDiff = diff;
+                  upcoming = { ...cls, status: diff <= 0 ? "Now" : `in ${diff} min` };
+              }
+          }
+      });
+      setNextClass(upcoming);
+  };
+
+  const getStudentIdDisplay = () => profile?.student_id || "xxxxxxxxxxx";
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-600"/></div>;
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
-      <div className="bg-white p-10 rounded-3xl shadow-xl text-center max-w-lg w-full border border-gray-100 animate-fade-in-up">
+    <div className="min-h-screen bg-gray-50 pb-24 md:pb-10 pt-20"> 
+    {/* เพิ่ม pt-20 เพื่อหลบ MiniProfile */}
+      
+      <div className="p-6 space-y-6 max-w-lg mx-auto">
         
-        <div className="mb-6 flex justify-center">
-           <div className={`w-20 h-20 rounded-full flex items-center justify-center ${role === 'OWNER' ? 'bg-orange-100 text-orange-500' : 'bg-blue-100 text-blue-500'}`}>
-              {role === 'OWNER' ? <Crown size={40} /> : <ShieldAlert size={40} />}
-           </div>
+        {/* 1. STORIES (ย้ายมาบนสุด) */}
+        <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+            <div className="flex flex-col items-center gap-1 shrink-0">
+                <div className="w-16 h-16 rounded-full border-2 border-dashed border-blue-300 flex items-center justify-center bg-blue-50 text-blue-400">
+                    <Zap size={24}/>
+                </div>
+                <span className="text-[10px] font-bold text-gray-500">Updates</span>
+            </div>
+            {[1,2,3].map((i) => (
+                <div key={i} className="flex flex-col items-center gap-1 shrink-0 cursor-pointer hover:opacity-80 transition-opacity">
+                    <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-yellow-400 to-fuchsia-600">
+                        <div className="w-full h-full rounded-full bg-white p-0.5">
+                            <img src={`https://picsum.photos/seed/${i}/200`} className="w-full h-full rounded-full object-cover"/>
+                        </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-gray-600">SIT News</span>
+                </div>
+            ))}
         </div>
 
-        <h1 className="text-3xl font-extrabold text-gray-800 mb-2">Welcome Back!</h1>
-        <p className="text-gray-500 mb-8">You are logged in as <span className="font-bold text-gray-800">{user?.email}</span></p>
+        {/* 2. NEXT CLASS HERO CARD */}
+        {nextClass ? (
+            <div className="bg-gray-900 rounded-3xl p-6 text-white shadow-xl shadow-blue-200 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500 rounded-full blur-[60px] opacity-40 group-hover:opacity-60 transition-opacity"></div>
+                <div className="relative z-10">
+                    <div className="flex justify-between items-start mb-6">
+                        <div>
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${nextClass.status === 'Now' ? 'bg-red-500 animate-pulse' : 'bg-blue-600'}`}>
+                                {nextClass.status === 'Now' ? 'Happening Now' : `Starts ${nextClass.status}`}
+                            </span>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-3xl font-bold">{nextClass.start_time.slice(0,5)}</p>
+                            <p className="text-xs text-gray-400">To {nextClass.end_time.slice(0,5)}</p>
+                        </div>
+                    </div>
+                    <div>
+                        <p className="text-gray-400 text-sm font-bold tracking-wider mb-1">{nextClass.subject_code}</p>
+                        <h2 className="text-2xl font-bold mb-4 line-clamp-1">{nextClass.subject_name}</h2>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-gray-300 text-sm">
+                                <MapPin size={16} className="text-blue-400"/>
+                                <span>{nextClass.room || "TBA"}</span>
+                            </div>
+                            <button className="bg-white text-gray-900 px-4 py-2 rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors flex items-center gap-2">
+                                Navigate <ChevronRight size={14}/>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        ) : (
+            <div className="bg-white rounded-3xl p-6 text-center border border-gray-100 shadow-sm py-10">
+                <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3 text-green-500">
+                    <Zap size={32} fill="currentColor"/>
+                </div>
+                <h2 className="text-xl font-bold text-gray-800">Free Time! 🎉</h2>
+                <p className="text-sm text-gray-400">No classes left for today.</p>
+            </div>
+        )}
 
-        <div className="p-4 bg-gray-50 rounded-2xl mb-8 border border-gray-200">
-            <p className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-1">Current Role</p>
-            <p className={`text-xl font-bold ${role === 'OWNER' ? 'text-orange-600' : 'text-blue-600'}`}>{role}</p>
+        {/* 3. QUICK ACTIONS */}
+        <div>
+            <h3 className="text-sm font-bold text-gray-800 mb-3 px-1">Quick Actions</h3>
+            <div className="grid grid-cols-4 gap-3">
+                <QuickBtn icon={CreditCard} label="ID Card" color="text-blue-600" bg="bg-blue-50" onClick={() => setShowCardModal(true)}/>
+                <QuickBtn icon={Award} label="GPAX" color="text-purple-600" bg="bg-purple-50" onClick={() => setShowGPAModal(true)}/>
+                <QuickBtn icon={Monitor} label="Lab Status" color="text-emerald-600" bg="bg-emerald-50" onClick={() => setShowLabModal(true)}/>
+                <QuickBtn icon={QrCode} label="Pass Key" color="text-orange-600" bg="bg-orange-50" onClick={() => setShowQRModal(true)}/>
+            </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => router.push('/profile')} className="py-3 px-4 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-all shadow-sm">
-                Go to Profile
-            </button>
-            <button onClick={() => router.push('/schedule')} className="py-3 px-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
-                Check Schedule
-            </button>
+        {/* 4. UPCOMING ASSIGNMENTS */}
+        <div>
+            <div className="flex justify-between items-end mb-3 px-1">
+                <h3 className="text-sm font-bold text-gray-800">Upcoming</h3>
+                <button onClick={() => router.push('/schedule')} className="text-xs font-bold text-blue-600">View Schedule</button>
+            </div>
+            
+            {assignments.length > 0 ? (
+                <div className="space-y-3">
+                    {assignments.map(ass => (
+                        <div key={ass.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex gap-4 items-center">
+                            <div className="w-12 h-12 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500 font-bold shrink-0">
+                                <BookOpen size={20}/>
+                            </div>
+                            <div className="flex-1">
+                                <h4 className="font-bold text-gray-800 text-sm line-clamp-1">{ass.title}</h4>
+                                <p className="text-xs text-gray-500">{ass.classes?.subject_name}</p>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-1 rounded-lg">
+                                    Due {new Date(ass.due_date).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
+                                </span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 text-center">
+                    <p className="text-sm text-gray-400">No upcoming assignments.</p>
+                </div>
+            )}
         </div>
-        
-        {/* ปุ่ม Logout */}
-        <button 
-            onClick={async () => {
-                await supabase.auth.signOut();
-                router.replace("/register");
-            }}
-            className="mt-6 text-sm text-red-500 hover:text-red-700 font-bold underline"
-        >
-            Logout
-        </button>
 
       </div>
+
+      {/* --- MODALS --- */}
+
+      {/* 1. STUDENT CARD MODAL (Fix Layout) */}
+     {/* 1. STUDENT CARD MODAL (Fix Logo & Layout) */}
+    {/* 1. STUDENT CARD MODAL (Final Fix) */}
+      {showCardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fade-in" onClick={() => setShowCardModal(false)}>
+            <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl relative flex flex-col" onClick={e => e.stopPropagation()}>
+                
+                {/* Header สีน้ำเงิน */}
+                <div className="bg-blue-600 h-32 relative p-5 flex justify-between items-start shrink-0">
+                    <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                        {/* โลโก้ KMUTT (ใช้ SVG ที่เสถียรกว่า หรือ Text ถ้าโหลดไม่ได้) */}
+                        <span className="text-white font-bold text-xs tracking-widest">KMUTT</span>
+                    </div>
+                    <div className="text-right text-white/90">
+                        <p className="text-[10px] font-bold tracking-widest uppercase mb-1">Student ID Card</p>
+                        <p className="text-[10px] opacity-75">SIT Faculty</p>
+                    </div>
+                </div>
+
+                {/* เนื้อหาบัตร (ดันขึ้นไปซ้อน Header นิดนึงเพื่อให้สวย) */}
+                <div className="px-6 pb-8 text-center -mt-16 relative z-10 flex flex-col items-center">
+                    
+                    {/* รูปโปรไฟล์ */}
+                    <div className="w-28 h-28 rounded-full border-4 border-white bg-gray-200 shadow-lg overflow-hidden mb-3 shrink-0">
+                        <img src={profile?.avatar} className="w-full h-full object-cover"/>
+                    </div>
+                    
+                    {/* ชื่อและสาขา */}
+                    <h2 className="text-2xl font-extrabold text-gray-800 leading-tight mb-1">{profile?.first_name}</h2>
+                    <p className="text-gray-500 font-bold text-sm mb-6 bg-gray-100 px-3 py-1 rounded-full">{profile?.major} Student</p>
+
+                    {/* กล่อง QR Code */}
+                    <div className="bg-white border-2 border-dashed border-gray-200 p-4 rounded-xl w-full flex flex-col items-center gap-2 shadow-sm">
+                        <p className="text-2xl font-mono font-bold text-blue-600 tracking-widest">{getStudentIdDisplay()}</p>
+                        <div className="bg-white p-1">
+                             <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${profile?.student_id}`} className="w-32 h-32 mix-blend-multiply opacity-90"/>
+                        </div>
+                        <p className="text-[9px] text-gray-400 uppercase tracking-wide mt-1">Scan to Verify</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+      )}
+
+      {/* 2. GPAX MODAL (Real Data) */}
+      {showGPAModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowGPAModal(false)}>
+            <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full animate-pop-in" onClick={e => e.stopPropagation()}>
+                <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4 text-purple-600"><Award size={32}/></div>
+                <h3 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-1">Current GPAX</h3>
+                {/* โชว์เกรดจริง */}
+                <p className="text-5xl font-extrabold text-gray-800 mb-6">{gpax}</p> 
+                <button onClick={() => { setShowGPAModal(false); router.push('/profile'); }} className="w-full py-3 bg-gray-100 rounded-xl font-bold text-gray-600 hover:bg-gray-200">View Transcript</button>
+            </div>
+        </div>
+      )}
+
+      {/* 3. PASS KEY (QR) MODAL */}
+      {showQRModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowQRModal(false)}>
+            <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-bold text-gray-800 mb-4">Access Pass Key</h3>
+                <div className="bg-white p-2 border-2 border-dashed border-gray-300 rounded-xl mb-4">
+                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=ACCESS:${profile?.student_id}:${new Date().toISOString()}`} className="w-full aspect-square"/>
+                </div>
+                <p className="text-xs text-gray-400">Scan this QR to enter Library or Lab rooms.</p>
+            </div>
+        </div>
+      )}
+
+      {/* 4. LAB STATUS MODAL */}
+      {showLabModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowLabModal(false)}>
+             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[70vh]" onClick={e => e.stopPropagation()}>
+                <div className="p-5 border-b bg-gray-50 flex justify-between items-center">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-2"><Monitor size={18} className="text-emerald-500"/> Computer Labs</h3>
+                    <button onClick={() => setShowLabModal(false)}><X size={20} className="text-gray-400"/></button>
+                </div>
+                <div className="p-4 overflow-y-auto custom-scrollbar space-y-3">
+                    {rooms.length > 0 ? rooms.map(room => (
+                        <div key={room.id} className="flex justify-between items-center p-4 border rounded-xl hover:bg-gray-50">
+                            <div>
+                                <h4 className="font-bold text-gray-800">{room.name}</h4>
+                                <p className="text-xs text-gray-500">Capacity: {room.capacity}</p>
+                            </div>
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${room.is_available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                {room.is_available ? 'Available' : 'Occupied'}
+                            </span>
+                        </div>
+                    )) : (
+                        <p className="text-center text-gray-400 py-4">No lab info available.</p>
+                    )}
+                </div>
+             </div>
+        </div>
+      )}
+
     </div>
   );
+}
+
+function QuickBtn({ icon: Icon, label, color, bg, onClick }) {
+    return (
+        <button onClick={onClick} className="flex flex-col items-center justify-center gap-2 bg-white p-3 py-4 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all active:scale-95">
+            <div className={`w-10 h-10 rounded-full ${bg} ${color} flex items-center justify-center`}>
+                <Icon size={20}/>
+            </div>
+            <span className="text-[10px] font-bold text-gray-600">{label}</span>
+        </button>
+    );
 }
