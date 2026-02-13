@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 import { 
   MapPin, QrCode, CreditCard, Award, Zap, ChevronRight, 
-  BookOpen, Monitor, X, Loader2
+  BookOpen, Monitor, X, Loader2, ExternalLink
 } from "lucide-react";
 
 export default function Home() {
@@ -19,11 +19,12 @@ export default function Home() {
   const [rooms, setRooms] = useState([]); 
   const [loading, setLoading] = useState(true);
 
-  // Modals
+  // Modals States
   const [showCardModal, setShowCardModal] = useState(false);
   const [showGPAModal, setShowGPAModal] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [showLabModal, setShowLabModal] = useState(false);
+  const [selectedStory, setSelectedStory] = useState(null); // ✅ เพิ่ม State สำหรับดู Story
 
   // --- FETCH DATA ---
   useEffect(() => {
@@ -35,32 +36,36 @@ export default function Home() {
       const { data: profileData } = await supabase.from("profiles").select("*").eq("id", user.id).single();
       setProfile(profileData);
 
-      // 2. Get Enrollments (เพื่อเอา Class ID ของเรา)
+      // 2. Get Enrollments
       const { data: myEnrolls } = await supabase.from("enrollments").select("class_id, grade").eq("user_id", user.id);
       const myClassIds = myEnrolls ? myEnrolls.map(e => e.class_id) : [];
 
-      // 3. Fetch Stories (Global)
-      const { data: annData } = await supabase.from("announcements").select("*").eq("is_active", true).order("created_at", { ascending: false });
+      // 3. Fetch Stories (เรียงตาม start_date)
+      const { data: annData } = await supabase
+          .from("announcements")
+          .select("*")
+          .eq("is_active", true)
+          .order("start_date", { ascending: false });
       setAnnouncements(annData || []);
 
-      // 4. Fetch Assignments (เฉพาะวิชาที่ลง)
+      // 4. Fetch Assignments
       if (myClassIds.length > 0) {
         const { data: assData } = await supabase.from("assignments")
             .select("*, classes(subject_code, subject_name)")
-            .in("class_id", myClassIds) // ✅ กรองเฉพาะวิชาที่เราเรียน
+            .in("class_id", myClassIds) 
             .order("due_date", { ascending: true })
             .limit(5);
         setAssignments(assData || []);
       }
 
-      // 5. Fetch Rooms (Global)
+      // 5. Fetch Rooms
       const { data: roomData } = await supabase.from("rooms").select("*").order("name");
       setRooms(roomData || []);
 
-      // 6. Calculate GPAX (จากเกรดของเรา)
+      // 6. Calculate GPAX
       calculateGPAX(myEnrolls, myClassIds);
 
-      // 7. Calculate Next Class (จากวิชาของเรา)
+      // 7. Calculate Next Class
       if (myClassIds.length > 0) {
           calculateNextClass(myClassIds);
       }
@@ -74,13 +79,9 @@ export default function Home() {
   // --- CALCULATE GPAX ---
   const calculateGPAX = async (enrolls, classIds) => {
     if (!enrolls || enrolls.length === 0) return setGpax("0.00");
-
     const { data: classes } = await supabase.from("classes").select("id, credit").in("id", classIds);
-
-    let totalScore = 0;
-    let totalCredit = 0;
+    let totalScore = 0; let totalCredit = 0;
     const map = { "A": 4, "B+": 3.5, "B": 3, "C+": 2.5, "C": 2, "D+": 1.5, "D": 1, "F": 0 };
-
     enrolls.forEach(e => {
         if (e.grade && map[e.grade] !== undefined) {
             const cls = classes?.find(c => c.id === e.class_id);
@@ -89,35 +90,26 @@ export default function Home() {
             totalCredit += credit;
         }
     });
-
     setGpax(totalCredit > 0 ? (totalScore / totalCredit).toFixed(2) : "0.00");
   };
 
   // --- CALCULATE NEXT CLASS ---
   const calculateNextClass = async (classIds) => {
-      // ดึงรายละเอียดวิชา เฉพาะ ID ที่เรามี
       const { data: classes } = await supabase.from("classes").select("*").in("id", classIds);
-
       const dayMap = { "Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6 };
       const now = new Date();
       const currentDay = now.getDay();
       const currentTime = now.getHours() * 60 + now.getMinutes();
-
       const todaysClasses = classes?.filter(c => dayMap[c.day_of_week] === currentDay);
       
-      let upcoming = null;
-      let minDiff = Infinity;
-
+      let upcoming = null; let minDiff = Infinity;
       todaysClasses?.forEach(cls => {
           const [startH, startM] = cls.start_time.split(':').map(Number);
           const [endH, endM] = cls.end_time.split(':').map(Number);
           const classStart = startH * 60 + startM;
           const classEnd = endH * 60 + endM;
-
-          // เช็คว่าวิชายังไม่จบ (เริ่มไปแล้วก็ได้ หรือกำลังจะเริ่ม)
           if (currentTime < classEnd) {
               const diff = classStart - currentTime;
-              // เลือกวิชาที่ใกล้ที่สุด และยังไม่จบ
               if (diff < minDiff) {
                   minDiff = diff;
                   upcoming = { ...cls, status: diff <= 0 ? "Now" : `in ${diff} min` };
@@ -145,7 +137,11 @@ export default function Home() {
                 <span className="text-[10px] font-bold text-gray-500">Updates</span>
             </div>
             {announcements.length > 0 ? announcements.map((ann) => (
-                <div key={ann.id} className="flex flex-col items-center gap-1 shrink-0 cursor-pointer hover:opacity-80 transition-opacity">
+                <div 
+                    key={ann.id} 
+                    onClick={() => setSelectedStory(ann)} // ✅ กดแล้วเปิด Modal
+                    className="flex flex-col items-center gap-1 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                >
                     <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-yellow-400 to-fuchsia-600">
                         <div className="w-full h-full rounded-full bg-white p-0.5">
                             <img src={ann.image_url || `https://ui-avatars.com/api/?name=${ann.title}`} className="w-full h-full rounded-full object-cover"/>
@@ -252,6 +248,39 @@ export default function Home() {
       </div>
 
       {/* --- MODALS --- */}
+
+      {/* ✅ STORY POPUP MODAL */}
+      {selectedStory && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in" onClick={() => setSelectedStory(null)}>
+            <div className="relative w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                <button onClick={() => setSelectedStory(null)} className="absolute -top-12 right-0 text-white p-2 hover:bg-white/20 rounded-full transition-colors">
+                    <X size={28}/>
+                </button>
+                <div className="bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+                    <div className="flex-1 bg-black flex items-center justify-center overflow-hidden">
+                        <img src={selectedStory.image_url} className="w-full h-full object-contain"/>
+                    </div>
+                    <div className="p-6 bg-white shrink-0">
+                        <h3 className="text-xl font-bold text-gray-900 mb-2 leading-tight">{selectedStory.title}</h3>
+                        <p className="text-xs text-gray-400 mb-4 font-mono">Posted on {new Date(selectedStory.start_date).toLocaleDateString()}</p>
+                        
+                        {selectedStory.link_url && selectedStory.link_url !== "EMPTY" && (
+                            <a 
+                                href={selectedStory.link_url} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="flex items-center justify-center gap-2 w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
+                            >
+                                <ExternalLink size={18}/> Read More / Join
+                            </a>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Student ID Card Modal */}
       {showCardModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fade-in" onClick={() => setShowCardModal(false)}>
             <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl relative flex flex-col" onClick={e => e.stopPropagation()}>
@@ -282,6 +311,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* GPA Modal */}
       {showGPAModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowGPAModal(false)}>
             <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full animate-pop-in" onClick={e => e.stopPropagation()}>
@@ -293,6 +323,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* QR Pass Key Modal */}
       {showQRModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowQRModal(false)}>
             <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full" onClick={e => e.stopPropagation()}>
@@ -305,6 +336,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* Lab Status Modal */}
       {showLabModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowLabModal(false)}>
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[70vh]" onClick={e => e.stopPropagation()}>

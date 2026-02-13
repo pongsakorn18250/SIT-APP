@@ -3,7 +3,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
   Home, Calendar, Settings, User, Rss, ShieldAlert, LogOut, 
-  ChevronDown, Edit3, X, CheckCircle, Crown 
+  ChevronDown, Edit3, X, CheckCircle, Crown, Megaphone // ✅ เพิ่ม Megaphone
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
@@ -86,7 +86,9 @@ export default function Navbar() {
         <nav className={`fixed bottom-0 w-full border-t flex justify-around py-3 pb-6 z-40 text-xs font-bold transition-colors backdrop-blur-xl ${theme.bgNav} ${theme.border} ${theme.textLight}`}>
           {isAdmin ? (
              <>
-                <NavItemMobile href="/admin" icon={ShieldAlert} label="Admin" active={pathname === "/admin"} theme={theme} />
+                <NavItemMobile href="/admin" icon={ShieldAlert} label="Console" active={pathname === "/admin"} theme={theme} />
+                {/* ✅ เพิ่มเมนู News (Mobile) */}
+                <NavItemMobile href="/admin/announcements" icon={Megaphone} label="News" active={pathname === "/admin/announcements"} theme={theme} />
                 <NavItemMobile href="/profile" icon={User} label="Profile" active={pathname === "/profile"} theme={theme} />
              </>
           ) : (
@@ -101,8 +103,7 @@ export default function Navbar() {
         </nav>
       </div>
 
-      {/* ================= DESKTOP SIDEBAR (FIXED FOR IPAD) ================= */}
-      {/* ✅ แก้: ใช้ h-[100dvh] และ overflow-y-auto เพื่อให้ไม่ตกขอบ */}
+      {/* ================= DESKTOP SIDEBAR ================= */}
       <div className={`hidden md:flex flex-col w-64 h-[100dvh] border-r fixed left-0 top-0 p-6 z-50 transition-colors overflow-y-auto ${theme.bgMain} ${theme.border}`}>
         
         {/* Profile Header */}
@@ -119,11 +120,16 @@ export default function Navbar() {
             </div>
         </div>
 
-        {/* Menu Items (ยืดหยุ่น) */}
+        {/* Menu Items */}
         <nav className="flex-1 space-y-1 mb-6">
           {isAdmin ? (
              <>
+                <div className="px-3 mb-2 text-xs font-bold opacity-50 uppercase tracking-wider">Management</div>
                 <NavItemDesktop href="/admin" icon={ShieldAlert} label="Admin Console" active={pathname === "/admin"} theme={theme} />
+                {/* ✅ เพิ่มเมนู News (Desktop) */}
+                <NavItemDesktop href="/admin/announcements" icon={Megaphone} label="News / Stories" active={pathname === "/admin/announcements"} theme={theme} />
+                
+                <div className="px-3 mb-2 mt-6 text-xs font-bold opacity-50 uppercase tracking-wider">Account</div>
                 <NavItemDesktop href="/profile" icon={User} label="My Profile" active={pathname === "/profile"} theme={theme} />
              </>
           ) : (
@@ -137,7 +143,7 @@ export default function Navbar() {
           )}
         </nav>
 
-        {/* Logout Button (ดันลงล่างสุด แต่ไม่ตกขอบ) */}
+        {/* Logout Button */}
         <div className="shrink-0 mt-auto pt-4 border-t border-gray-200/50">
             <button onClick={() => setShowLogoutConfirm(true)} className="flex items-center gap-3 p-3 w-full rounded-xl text-red-500 font-bold hover:bg-red-50 transition-all group">
                 <LogOut size={20} className="group-hover:-translate-x-1 transition-transform" /> Logout
