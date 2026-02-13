@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 import { 
   MapPin, QrCode, CreditCard, Award, Zap, ChevronRight, 
-  BookOpen, Monitor, X, Loader2, ExternalLink
+  BookOpen, Monitor, X, Loader2, ExternalLink, Clock
 } from "lucide-react";
 
 export default function Home() {
@@ -24,7 +24,7 @@ export default function Home() {
   const [showGPAModal, setShowGPAModal] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [showLabModal, setShowLabModal] = useState(false);
-  const [selectedStory, setSelectedStory] = useState(null); // ✅ เพิ่ม State สำหรับดู Story
+  const [selectedStory, setSelectedStory] = useState(null);
 
   // --- FETCH DATA ---
   useEffect(() => {
@@ -36,11 +36,11 @@ export default function Home() {
       const { data: profileData } = await supabase.from("profiles").select("*").eq("id", user.id).single();
       setProfile(profileData);
 
-      // 2. Get Enrollments
+      // 2. Get Enrollments & Class IDs
       const { data: myEnrolls } = await supabase.from("enrollments").select("class_id, grade").eq("user_id", user.id);
       const myClassIds = myEnrolls ? myEnrolls.map(e => e.class_id) : [];
 
-      // 3. Fetch Stories (เรียงตาม start_date)
+      // 3. Fetch Stories
       const { data: annData } = await supabase
           .from("announcements")
           .select("*")
@@ -48,7 +48,7 @@ export default function Home() {
           .order("start_date", { ascending: false });
       setAnnouncements(annData || []);
 
-      // 4. Fetch Assignments
+      // 4. Fetch Assignments (เฉพาะวิชาที่เราลง)
       if (myClassIds.length > 0) {
         const { data: assData } = await supabase.from("assignments")
             .select("*, classes(subject_code, subject_name)")
@@ -62,13 +62,9 @@ export default function Home() {
       const { data: roomData } = await supabase.from("rooms").select("*").order("name");
       setRooms(roomData || []);
 
-      // 6. Calculate GPAX
+      // 6. Calculate GPAX & Next Class
       calculateGPAX(myEnrolls, myClassIds);
-
-      // 7. Calculate Next Class
-      if (myClassIds.length > 0) {
-          calculateNextClass(myClassIds);
-      }
+      if (myClassIds.length > 0) calculateNextClass(myClassIds);
 
       setLoading(false);
     };
@@ -76,7 +72,6 @@ export default function Home() {
     initData();
   }, []);
 
-  // --- CALCULATE GPAX ---
   const calculateGPAX = async (enrolls, classIds) => {
     if (!enrolls || enrolls.length === 0) return setGpax("0.00");
     const { data: classes } = await supabase.from("classes").select("id, credit").in("id", classIds);
@@ -93,7 +88,7 @@ export default function Home() {
     setGpax(totalCredit > 0 ? (totalScore / totalCredit).toFixed(2) : "0.00");
   };
 
-  // --- CALCULATE NEXT CLASS ---
+  // ✅ แก้ไข: ปรับเวลาเป็น hr min
   const calculateNextClass = async (classIds) => {
       const { data: classes } = await supabase.from("classes").select("*").in("id", classIds);
       const dayMap = { "Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6 };
@@ -103,16 +98,25 @@ export default function Home() {
       const todaysClasses = classes?.filter(c => dayMap[c.day_of_week] === currentDay);
       
       let upcoming = null; let minDiff = Infinity;
+      
       todaysClasses?.forEach(cls => {
           const [startH, startM] = cls.start_time.split(':').map(Number);
           const [endH, endM] = cls.end_time.split(':').map(Number);
           const classStart = startH * 60 + startM;
           const classEnd = endH * 60 + endM;
+          
           if (currentTime < classEnd) {
               const diff = classStart - currentTime;
               if (diff < minDiff) {
                   minDiff = diff;
-                  upcoming = { ...cls, status: diff <= 0 ? "Now" : `in ${diff} min` };
+                  // แปลงนาที เป็น ชม. นาที
+                  let timeText = "Now";
+                  if (diff > 0) {
+                      const h = Math.floor(diff / 60);
+                      const m = diff % 60;
+                      timeText = h > 0 ? `in ${h}hr ${m}m` : `in ${m} min`;
+                  }
+                  upcoming = { ...cls, status: timeText };
               }
           }
       });
@@ -139,7 +143,7 @@ export default function Home() {
             {announcements.length > 0 ? announcements.map((ann) => (
                 <div 
                     key={ann.id} 
-                    onClick={() => setSelectedStory(ann)} // ✅ กดแล้วเปิด Modal
+                    onClick={() => setSelectedStory(ann)} 
                     className="flex flex-col items-center gap-1 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
                 >
                     <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-yellow-400 to-fuchsia-600">
@@ -168,7 +172,7 @@ export default function Home() {
                     <div className="flex justify-between items-start mb-6">
                         <div>
                             <span className={`px-3 py-1 rounded-full text-xs font-bold ${nextClass.status === 'Now' ? 'bg-red-500 animate-pulse' : 'bg-blue-600'}`}>
-                                {nextClass.status === 'Now' ? 'Happening Now' : `Starts ${nextClass.status}`}
+                                {nextClass.status.startsWith('in') ? `Starts ${nextClass.status}` : 'Happening Now'}
                             </span>
                         </div>
                         <div className="text-right">
@@ -247,15 +251,11 @@ export default function Home() {
 
       </div>
 
-      {/* --- MODALS --- */}
-
-      {/* ✅ STORY POPUP MODAL */}
+      {/* MODALS */}
       {selectedStory && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in" onClick={() => setSelectedStory(null)}>
             <div className="relative w-full max-w-sm" onClick={e => e.stopPropagation()}>
-                <button onClick={() => setSelectedStory(null)} className="absolute -top-12 right-0 text-white p-2 hover:bg-white/20 rounded-full transition-colors">
-                    <X size={28}/>
-                </button>
+                <button onClick={() => setSelectedStory(null)} className="absolute -top-12 right-0 text-white p-2 hover:bg-white/20 rounded-full transition-colors"><X size={28}/></button>
                 <div className="bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
                     <div className="flex-1 bg-black flex items-center justify-center overflow-hidden">
                         <img src={selectedStory.image_url} className="w-full h-full object-contain"/>
@@ -263,14 +263,8 @@ export default function Home() {
                     <div className="p-6 bg-white shrink-0">
                         <h3 className="text-xl font-bold text-gray-900 mb-2 leading-tight">{selectedStory.title}</h3>
                         <p className="text-xs text-gray-400 mb-4 font-mono">Posted on {new Date(selectedStory.start_date).toLocaleDateString()}</p>
-                        
                         {selectedStory.link_url && selectedStory.link_url !== "EMPTY" && (
-                            <a 
-                                href={selectedStory.link_url} 
-                                target="_blank" 
-                                rel="noreferrer"
-                                className="flex items-center justify-center gap-2 w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
-                            >
+                            <a href={selectedStory.link_url} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">
                                 <ExternalLink size={18}/> Read More / Join
                             </a>
                         )}
@@ -280,89 +274,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* Student ID Card Modal */}
-      {showCardModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fade-in" onClick={() => setShowCardModal(false)}>
-            <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl relative flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="bg-blue-600 h-32 relative p-5 flex justify-between items-start shrink-0">
-                    <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
-                        <span className="text-white font-bold text-xs tracking-widest">KMUTT</span>
-                    </div>
-                    <div className="text-right text-white/90">
-                        <p className="text-[10px] font-bold tracking-widest uppercase mb-1">Student ID Card</p>
-                        <p className="text-[10px] opacity-75">SIT Faculty</p>
-                    </div>
-                </div>
-                <div className="px-6 pb-8 text-center -mt-16 relative z-10 flex flex-col items-center">
-                    <div className="w-28 h-28 rounded-full border-4 border-white bg-gray-200 shadow-lg overflow-hidden mb-3 shrink-0">
-                        <img src={profile?.avatar} className="w-full h-full object-cover"/>
-                    </div>
-                    <h2 className="text-2xl font-extrabold text-gray-800 leading-tight mb-1">{profile?.first_name}</h2>
-                    <p className="text-gray-500 font-bold text-sm mb-6 bg-gray-100 px-3 py-1 rounded-full">{profile?.major} Student</p>
-                    <div className="bg-white border-2 border-dashed border-gray-200 p-4 rounded-xl w-full flex flex-col items-center gap-2 shadow-sm">
-                        <p className="text-2xl font-mono font-bold text-blue-600 tracking-widest">{getStudentIdDisplay()}</p>
-                        <div className="bg-white p-1">
-                             <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${profile?.student_id}`} className="w-32 h-32 mix-blend-multiply opacity-90"/>
-                        </div>
-                        <p className="text-[9px] text-gray-400 uppercase tracking-wide mt-1">Scan to Verify</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* GPA Modal */}
-      {showGPAModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowGPAModal(false)}>
-            <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full animate-pop-in" onClick={e => e.stopPropagation()}>
-                <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4 text-purple-600"><Award size={32}/></div>
-                <h3 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-1">Current GPAX</h3>
-                <p className="text-5xl font-extrabold text-gray-800 mb-6">{gpax}</p> 
-                <button onClick={() => { setShowGPAModal(false); router.push('/profile'); }} className="w-full py-3 bg-gray-100 rounded-xl font-bold text-gray-600 hover:bg-gray-200">View Transcript</button>
-            </div>
-        </div>
-      )}
-
-      {/* QR Pass Key Modal */}
-      {showQRModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowQRModal(false)}>
-            <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full" onClick={e => e.stopPropagation()}>
-                <h3 className="text-xl font-bold text-gray-800 mb-4">Access Pass Key</h3>
-                <div className="bg-white p-2 border-2 border-dashed border-gray-300 rounded-xl mb-4">
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=ACCESS:${profile?.student_id}:${new Date().toISOString()}`} className="w-full aspect-square"/>
-                </div>
-                <p className="text-xs text-gray-400">Scan this QR to enter Library or Lab rooms.</p>
-            </div>
-        </div>
-      )}
-
-      {/* Lab Status Modal */}
-      {showLabModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowLabModal(false)}>
-             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[70vh]" onClick={e => e.stopPropagation()}>
-                <div className="p-5 border-b bg-gray-50 flex justify-between items-center">
-                    <h3 className="font-bold text-gray-800 flex items-center gap-2"><Monitor size={18} className="text-emerald-500"/> Computer Labs</h3>
-                    <button onClick={() => setShowLabModal(false)}><X size={20} className="text-gray-400"/></button>
-                </div>
-                <div className="p-4 overflow-y-auto custom-scrollbar space-y-3">
-                    {rooms.length > 0 ? rooms.map(room => (
-                        <div key={room.id} className="flex justify-between items-center p-4 border rounded-xl hover:bg-gray-50">
-                            <div>
-                                <h4 className="font-bold text-gray-800">{room.name}</h4>
-                                <p className="text-xs text-gray-500">Capacity: {room.capacity}</p>
-                            </div>
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${room.is_available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                                {room.is_available ? 'Available' : 'Occupied'}
-                            </span>
-                        </div>
-                    )) : (
-                        <p className="text-center text-gray-400 py-4">No lab info available.</p>
-                    )}
-                </div>
-             </div>
-        </div>
-      )}
-
+      {/* ID Card, GPA, QR, Lab Modals -> Same as before (ย่อเพื่อประหยัดที่) */}
+      {showCardModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fade-in" onClick={() => setShowCardModal(false)}><div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl relative flex flex-col" onClick={e => e.stopPropagation()}><div className="bg-blue-600 h-32 relative p-5 flex justify-between items-start shrink-0"><div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm"><span className="text-white font-bold text-xs tracking-widest">KMUTT</span></div><div className="text-right text-white/90"><p className="text-[10px] font-bold tracking-widest uppercase mb-1">Student ID Card</p><p className="text-[10px] opacity-75">SIT Faculty</p></div></div><div className="px-6 pb-8 text-center -mt-16 relative z-10 flex flex-col items-center"><div className="w-28 h-28 rounded-full border-4 border-white bg-gray-200 shadow-lg overflow-hidden mb-3 shrink-0"><img src={profile?.avatar} className="w-full h-full object-cover"/></div><h2 className="text-2xl font-extrabold text-gray-800 leading-tight mb-1">{profile?.first_name}</h2><p className="text-gray-500 font-bold text-sm mb-6 bg-gray-100 px-3 py-1 rounded-full">{profile?.major} Student</p><div className="bg-white border-2 border-dashed border-gray-200 p-4 rounded-xl w-full flex flex-col items-center gap-2 shadow-sm"><p className="text-2xl font-mono font-bold text-blue-600 tracking-widest">{getStudentIdDisplay()}</p><div className="bg-white p-1"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${profile?.student_id}`} className="w-32 h-32 mix-blend-multiply opacity-90"/></div><p className="text-[9px] text-gray-400 uppercase tracking-wide mt-1">Scan to Verify</p></div></div></div></div>)}
+      {showGPAModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowGPAModal(false)}><div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full animate-pop-in" onClick={e => e.stopPropagation()}><div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4 text-purple-600"><Award size={32}/></div><h3 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-1">Current GPAX</h3><p className="text-5xl font-extrabold text-gray-800 mb-6">{gpax}</p><button onClick={() => { setShowGPAModal(false); router.push('/profile'); }} className="w-full py-3 bg-gray-100 rounded-xl font-bold text-gray-600 hover:bg-gray-200">View Transcript</button></div></div>)}
+      {showQRModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowQRModal(false)}><div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full" onClick={e => e.stopPropagation()}><h3 className="text-xl font-bold text-gray-800 mb-4">Access Pass Key</h3><div className="bg-white p-2 border-2 border-dashed border-gray-300 rounded-xl mb-4"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=ACCESS:${profile?.student_id}:${new Date().toISOString()}`} className="w-full aspect-square"/></div><p className="text-xs text-gray-400">Scan this QR to enter Library or Lab rooms.</p></div></div>)}
+      {showLabModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowLabModal(false)}><div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[70vh]" onClick={e => e.stopPropagation()}><div className="p-5 border-b bg-gray-50 flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center gap-2"><Monitor size={18} className="text-emerald-500"/> Computer Labs</h3><button onClick={() => setShowLabModal(false)}><X size={20} className="text-gray-400"/></button></div><div className="p-4 overflow-y-auto custom-scrollbar space-y-3">{rooms.length > 0 ? rooms.map(room => (<div key={room.id} className="flex justify-between items-center p-4 border rounded-xl hover:bg-gray-50"><div><h4 className="font-bold text-gray-800">{room.name}</h4><p className="text-xs text-gray-500">Capacity: {room.capacity}</p></div><span className={`px-3 py-1 rounded-full text-xs font-bold ${room.is_available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>{room.is_available ? 'Available' : 'Occupied'}</span></div>)) : (<p className="text-center text-gray-400 py-4">No lab info available.</p>)}</div></div></div>)}
     </div>
   );
 }

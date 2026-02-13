@@ -3,7 +3,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
   Home, Calendar, Settings, User, Rss, ShieldAlert, LogOut, 
-  ChevronDown, Edit3, X, CheckCircle, Crown, Megaphone // ✅ เพิ่ม Megaphone
+  ChevronDown, Edit3, X, CheckCircle, Crown, Megaphone 
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
@@ -21,7 +21,6 @@ export default function Navbar() {
   const router = useRouter();
   
   const [profile, setProfile] = useState(null);
-  const [showMiniMenu, setShowMiniMenu] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -87,8 +86,8 @@ export default function Navbar() {
           {isAdmin ? (
              <>
                 <NavItemMobile href="/admin" icon={ShieldAlert} label="Console" active={pathname === "/admin"} theme={theme} />
-                {/* ✅ เพิ่มเมนู News (Mobile) */}
                 <NavItemMobile href="/admin/announcements" icon={Megaphone} label="News" active={pathname === "/admin/announcements"} theme={theme} />
+                <NavItemMobile href="/admin/assignments" icon={Calendar} label="Assign" active={pathname === "/admin/assignments"} theme={theme} />
                 <NavItemMobile href="/profile" icon={User} label="Profile" active={pathname === "/profile"} theme={theme} />
              </>
           ) : (
@@ -107,10 +106,13 @@ export default function Navbar() {
       <div className={`hidden md:flex flex-col w-64 h-[100dvh] border-r fixed left-0 top-0 p-6 z-50 transition-colors overflow-y-auto ${theme.bgMain} ${theme.border}`}>
         
         {/* Profile Header */}
-        <div className="flex items-center gap-3 mb-10 pl-2 shrink-0">
-            <div className="w-12 h-12 rounded-full bg-white shadow-sm overflow-hidden relative shrink-0">
+        <div className="flex items-center gap-3 mb-10 pl-2 shrink-0 cursor-pointer group" onClick={() => setShowAvatarModal(true)}>
+            <div className="w-12 h-12 rounded-full bg-white shadow-sm overflow-hidden relative shrink-0 group-hover:scale-105 transition-transform">
                 <img src={profile?.avatar} className="w-full h-full object-cover" />
                 {profile?.role === 'OWNER' && <div className="absolute top-0 right-0 bg-yellow-400 rounded-full p-0.5 border border-white"><Crown size={8} className="text-white fill-white"/></div>}
+                <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Edit3 size={16} className="text-white"/>
+                </div>
             </div>
             <div className="overflow-hidden">
                 <p className="font-bold text-gray-800 text-lg leading-tight truncate">{profile?.first_name}</p>
@@ -126,8 +128,8 @@ export default function Navbar() {
              <>
                 <div className="px-3 mb-2 text-xs font-bold opacity-50 uppercase tracking-wider">Management</div>
                 <NavItemDesktop href="/admin" icon={ShieldAlert} label="Admin Console" active={pathname === "/admin"} theme={theme} />
-                {/* ✅ เพิ่มเมนู News (Desktop) */}
                 <NavItemDesktop href="/admin/announcements" icon={Megaphone} label="News / Stories" active={pathname === "/admin/announcements"} theme={theme} />
+                <NavItemDesktop href="/admin/assignments" icon={Calendar} label="Assignments" active={pathname === "/admin/assignments"} theme={theme} />
                 
                 <div className="px-3 mb-2 mt-6 text-xs font-bold opacity-50 uppercase tracking-wider">Account</div>
                 <NavItemDesktop href="/profile" icon={User} label="My Profile" active={pathname === "/profile"} theme={theme} />
@@ -152,9 +154,11 @@ export default function Navbar() {
       </div>
 
       {/* ================= MODALS ================= */}
+      
+      {/* 1. Avatar Selection Modal (FULL CODE) */}
       {showAvatarModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowAvatarModal(false)}>
+             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
                 <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                     <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Edit3 size={18} className={theme.text}/> Choose New Avatar</h2>
                     <button onClick={() => setShowAvatarModal(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X size={20} /></button>
@@ -177,9 +181,10 @@ export default function Navbar() {
         </div>
       )}
 
+      {/* 2. Logout Confirmation Modal (FULL CODE) */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center relative overflow-hidden animate-pop-in">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowLogoutConfirm(false)}>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center relative overflow-hidden animate-pop-in" onClick={e => e.stopPropagation()}>
                 <div className={`w-32 h-32 mx-auto mb-4 rounded-full border-4 border-white shadow-lg animate-bounce ${theme.bgMain}`}>
                     <img src={profile?.avatar} className="w-full h-full object-cover" />
                 </div>
