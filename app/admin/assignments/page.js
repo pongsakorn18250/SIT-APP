@@ -2,13 +2,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../../lib/supabase"; 
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Loader2, BookOpen, Trash2, Calendar } from "lucide-react";
+import { ArrowLeft, Save, Loader2, BookOpen, Trash2, Calendar, Star } from "lucide-react";
 
 export default function AdminAssignments() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [classes, setClasses] = useState([]); // รายชื่อวิชา
-  const [assignments, setAssignments] = useState([]); // การบ้านที่มีอยู่
+  const [classes, setClasses] = useState([]); 
+  const [assignments, setAssignments] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form
@@ -16,7 +16,8 @@ export default function AdminAssignments() {
     class_id: "",
     title: "",
     description: "",
-    due_date: ""
+    due_date: "",
+    max_score: "10" // ✅ เพิ่ม Default Value
   });
 
   useEffect(() => {
@@ -27,11 +28,9 @@ export default function AdminAssignments() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push("/register"); return; }
 
-    // 1. ดึงวิชาทั้งหมดมาใส่ Dropdown
     const { data: classData } = await supabase.from("classes").select("id, subject_code, subject_name").order("subject_code");
     setClasses(classData || []);
 
-    // 2. ดึงการบ้านเดิม
     fetchAssignments();
     setLoading(false);
   };
@@ -50,12 +49,13 @@ export default function AdminAssignments() {
         class_id: form.class_id,
         title: form.title,
         description: form.description,
-        due_date: new Date(form.due_date).toISOString()
+        due_date: new Date(form.due_date).toISOString(),
+        max_score: parseInt(form.max_score) || 10 // ✅ บันทึกค่า Max Score
     });
 
     if (!error) {
         alert("Assignment Posted! 📚");
-        setForm({ ...form, title: "", description: "" }); // Clear form
+        setForm({ ...form, title: "", description: "", max_score: "10" }); 
         fetchAssignments();
     } else {
         alert(error.message);
@@ -130,14 +130,26 @@ export default function AdminAssignments() {
                         />
                     </div>
 
-                    <div>
-                        <label className="text-xs font-bold text-gray-400">Due Date</label>
-                        <input 
-                            type="datetime-local"
-                            className="w-full p-3 border rounded-xl" 
-                            value={form.due_date}
-                            onChange={e => setForm({...form, due_date: e.target.value})}
-                        />
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-gray-400">Due Date</label>
+                            <input 
+                                type="datetime-local"
+                                className="w-full p-3 border rounded-xl" 
+                                value={form.due_date}
+                                onChange={e => setForm({...form, due_date: e.target.value})}
+                            />
+                        </div>
+                        {/* ✅ เพิ่มช่อง Max Score */}
+                        <div>
+                            <label className="text-xs font-bold text-gray-400 flex items-center gap-1"><Star size={12}/> Max Score</label>
+                            <input 
+                                type="number"
+                                className="w-full p-3 border rounded-xl text-center font-bold" 
+                                value={form.max_score}
+                                onChange={e => setForm({...form, max_score: e.target.value})}
+                            />
+                        </div>
                     </div>
 
                     <button disabled={isSubmitting} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
@@ -153,8 +165,12 @@ export default function AdminAssignments() {
                     assignments.map(ass => (
                         <div key={ass.id} className="bg-white p-4 rounded-xl border flex justify-between items-center shadow-sm">
                             <div>
-                                <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-1 rounded">{ass.classes?.subject_code}</span>
-                                <h4 className="font-bold text-gray-800 mt-1">{ass.title}</h4>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-1 rounded">{ass.classes?.subject_code}</span>
+                                    {/* ✅ โชว์คะแนนเต็ม */}
+                                    <span className="text-[10px] font-bold bg-yellow-50 text-yellow-600 px-2 py-1 rounded border border-yellow-100">{ass.max_score} pts</span>
+                                </div>
+                                <h4 className="font-bold text-gray-800">{ass.title}</h4>
                                 <p className="text-xs text-red-500">Due: {new Date(ass.due_date).toLocaleString()}</p>
                             </div>
                             <button onClick={() => handleDelete(ass.id)} className="text-red-300 hover:text-red-500 p-2"><Trash2 size={18}/></button>
