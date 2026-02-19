@@ -17,7 +17,7 @@ export default function AdminAssignments() {
     title: "",
     description: "",
     due_date: "",
-    max_score: "10" // ✅ เพิ่ม Default Value
+    max_score: "10" 
   });
 
   useEffect(() => {
@@ -45,20 +45,44 @@ export default function AdminAssignments() {
     if (!form.class_id || !form.title || !form.due_date) return alert("Please fill all required fields");
 
     setIsSubmitting(true);
-    const { error } = await supabase.from("assignments").insert({
+    
+    // 1. สร้าง Assignment (เพิ่ม .select().single() เพื่อเอา ID งาน)
+    const { data: newAssignment, error } = await supabase.from("assignments").insert({
         class_id: form.class_id,
         title: form.title,
         description: form.description,
         due_date: new Date(form.due_date).toISOString(),
-        max_score: parseInt(form.max_score) || 10 // ✅ บันทึกค่า Max Score
-    });
+        max_score: parseInt(form.max_score) || 10 
+    }).select().single();
 
-    if (!error) {
-        alert("Assignment Posted! 📚");
+    if (!error && newAssignment) {
+        
+        // --- 🔔 เริ่มส่วนส่งแจ้งเตือน ---
+        // A. หาเด็กที่เรียนวิชานี้
+        const { data: students } = await supabase
+            .from("enrollments")
+            .select("user_id")
+            .eq("class_id", form.class_id);
+
+        if (students?.length > 0) {
+            // B. เตรียมซองจดหมายหาทุกคน
+            const notiData = students.map(s => ({
+                user_id: s.user_id,
+                type: 'assignment', 
+                title: 'New Assignment 📚',
+                message: `Task "${form.title}" has been assigned. Due: ${new Date(form.due_date).toLocaleDateString()}`
+            }));
+
+            // C. ส่งจดหมาย (Insert ลงตาราง notifications)
+            await supabase.from("notifications").insert(notiData);
+        }
+        // -----------------------------
+
+        alert("Assignment Posted & Students Notified! 🔔");
         setForm({ ...form, title: "", description: "", max_score: "10" }); 
         fetchAssignments();
     } else {
-        alert(error.message);
+        alert(error?.message || "Error posting assignment");
     }
     setIsSubmitting(false);
   };
@@ -95,7 +119,6 @@ export default function AdminAssignments() {
                 <h2 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><Calendar size={18}/> New Task</h2>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     
-                    {/* เลือกวิชา */}
                     <div>
                         <label className="text-xs font-bold text-gray-400">Select Class (Subject)</label>
                         <select 
@@ -140,7 +163,6 @@ export default function AdminAssignments() {
                                 onChange={e => setForm({...form, due_date: e.target.value})}
                             />
                         </div>
-                        {/* ✅ เพิ่มช่อง Max Score */}
                         <div>
                             <label className="text-xs font-bold text-gray-400 flex items-center gap-1"><Star size={12}/> Max Score</label>
                             <input 
@@ -167,8 +189,7 @@ export default function AdminAssignments() {
                             <div>
                                 <div className="flex items-center gap-2 mb-1">
                                     <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-1 rounded">{ass.classes?.subject_code}</span>
-                                    {/* ✅ โชว์คะแนนเต็ม */}
-                                    <span className="text-[10px] font-bold bg-yellow-50 text-yellow-600 px-2 py-1 rounded border border-yellow-100">{ass.max_score} pts</span>
+                                    <span className="text-[10px] font-bold bg-yellow-50 text-yellow-600 px-2 py-1 rounded border border-yellow-100">{ass.max_score || 10} pts</span>
                                 </div>
                                 <h4 className="font-bold text-gray-800">{ass.title}</h4>
                                 <p className="text-xs text-red-500">Due: {new Date(ass.due_date).toLocaleString()}</p>

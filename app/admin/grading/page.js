@@ -63,18 +63,49 @@ export default function AdminGrading() {
       setStep(2);
   };
 
-  // 5. บันทึกคะแนน
-  const handleSaveScore = async (submissionId, newScore) => {
+  // 5. บันทึกคะแนน และ ส่ง Noti 🔔 (ฉบับ Pro: แยกประเภท Update ได้)
+  const handleSaveScore = async (submissionId, newScore, studentId, assignmentTitle) => {
+      if (!newScore) return; 
+
+      // ✅ A. เช็คก่อนว่า "เป็นการให้คะแนนครั้งแรก" หรือ "แก้ไข"
+      // (โดยดูจาก State ปัจจุบันก่อนที่จะอัปเดต)
+      const currentSub = submissions.find(s => s.id === submissionId);
+      const isUpdate = currentSub?.score ? true : false; // ถ้ามีคะแนนเก่า = Update
+
+      // B. บันทึกคะแนนลง DB
       const { error } = await supabase
           .from("submissions")
           .update({ score: newScore, status: 'graded' })
           .eq("id", submissionId);
       
       if (!error) {
-          // อัปเดต UI ให้ user รู้ว่าเซฟแล้ว (Optional: ทำ Toast notification ก็ได้)
           console.log("Score Saved"); 
+
+          // ✅ C. อัปเดต State หน้าจอทันที 
+          // (สำคัญ! เพื่อให้ UI จำค่าล่าสุดไว้ ถ้าอาจารย์แก้ซ้ำอีกรอบ ระบบจะได้รู้ว่าเป็น Update)
+          setSubmissions(prev => prev.map(s => 
+              s.id === submissionId ? { ...s, score: newScore, status: 'graded' } : s
+          ));
+
+          // ✅ D. เลือกคำที่จะใช้แจ้งเตือน
+          const notiTitle = isUpdate ? "Score Updated ✏️" : "Assignment Graded 📋";
+          const notiMsg = isUpdate 
+              ? `Your score for "${assignmentTitle}" has been updated to ${newScore}.` // กรณีแก้ไข
+              : `You received ${newScore} points for "${assignmentTitle}".`; // กรณีตรวจครั้งแรก
+
+          // E. ส่ง Noti
+          await supabase.from("notifications").insert({
+              user_id: studentId, 
+              type: 'grade',      
+              title: notiTitle,
+              message: notiMsg
+          });
+          
+      } else {
+          alert("Error saving score");
       }
   };
+  
 
   // ปุ่มย้อนกลับ (Back Logic)
   const handleBack = () => {
@@ -207,14 +238,15 @@ export default function AdminGrading() {
                                     </span>
                                 </div>
 
-                                {/* Grading Input (Updated with Max Score) */}
+                                {/* Grading Input (ส่ง Noti หาเด็ก) */}
                                 <div className="flex items-center gap-2">
                                     <div className="flex flex-col items-end">
                                         <label className="text-[10px] font-bold text-gray-400 mb-1">SCORE</label>
                                         <div className="flex items-center gap-2">
                                             <input 
                                                 defaultValue={sub.score} 
-                                                onBlur={(e) => handleSaveScore(sub.id, e.target.value)}
+                                                // ✅ ส่ง student_id และ ชื่อการบ้าน ไปด้วย เพื่อให้ส่ง Noti ถูกคน
+                                                onBlur={(e) => handleSaveScore(sub.id, e.target.value, sub.student_id, selectedAssignment.title)}
                                                 className="w-16 p-2 border rounded-lg text-center font-bold text-gray-800 focus:ring-2 ring-blue-500 outline-none bg-gray-50 focus:bg-white"
                                                 placeholder="-"
                                             />
