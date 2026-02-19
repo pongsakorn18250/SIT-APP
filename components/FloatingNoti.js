@@ -18,7 +18,7 @@ export default function FloatingNoti() {
   const [selectedIds, setSelectedIds] = useState([]);
   const longPressTimer = useRef(null);
 
-  // --- 1. Fetch Data (ย้าย logic มาไว้ใน function นี้และใช้ useCallback เพื่อแก้แดง) ---
+  // --- 1. Fetch Data ---
   const fetchNotis = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -47,10 +47,55 @@ export default function FloatingNoti() {
     setUnreadCount(formattedNotis.filter(n => !n.isRead).length);
   }, []);
 
-  // เรียกใช้ fetchNotis ใน useEffect
+  // --- 2. Realtime Subscription Logic (NEW!) ---
   useEffect(() => {
+    // 2.1 โหลดข้อมูลครั้งแรก
     fetchNotis();
-  }, [fetchNotis, isOpen, pathname]); 
+
+    // 2.2 ตั้งค่า Realtime Listener
+    let channel;
+    const setupRealtime = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        channel = supabase
+            .channel('realtime-noti')
+            .on(
+                'postgres_changes', 
+                { 
+                    event: 'INSERT', 
+                    schema: 'public', 
+                    table: 'notifications',
+                    filter: `user_id=eq.${user.id}` // ดักฟังเฉพาะของ User เรา
+                }, 
+                (payload) => {
+                    // console.log("New Noti Arrived!", payload.new);
+                    
+                    const newNoti = {
+                        id: payload.new.id,
+                        type: payload.new.type || 'info',
+                        title: payload.new.title,
+                        desc: payload.new.message,
+                        timestamp: payload.new.created_at,
+                        isRead: false
+                    };
+
+                    // Update UI ทันที
+                    setNotifications((prev) => [newNoti, ...prev]);
+                    setUnreadCount((prev) => prev + 1);
+                }
+            )
+            .subscribe();
+    };
+
+    setupRealtime();
+
+    // Cleanup เมื่อปิด Component
+    return () => {
+        if (channel) supabase.removeChannel(channel);
+    };
+
+  }, [fetchNotis]); // เอา dependency อื่นออก เพื่อป้องกันการ Re-subscribe บ่อยเกินไป
 
   // --- Actions ---
   const toggleOpen = () => {
@@ -62,13 +107,9 @@ export default function FloatingNoti() {
   };
 
   const deleteFromDB = async (idsToDelete) => {
-      // Optimistic Update
       setNotifications(prev => prev.filter(n => !idsToDelete.includes(n.id)));
       setUnreadCount(prev => prev - notifications.filter(n => idsToDelete.includes(n.id) && !n.isRead).length);
-      
-      // Real Delete
       await supabase.from('notifications').delete().in('id', idsToDelete);
-      // fetchNotis(); // เรียกซ้ำเพื่อความชัวร์ (ถ้าต้องการ)
   };
   
   const handleDeleteSingle = (e, id) => {
@@ -133,8 +174,9 @@ export default function FloatingNoti() {
       return count;
   };
 
-  // --- Check Page Visibility (อยู่ล่างสุดเสมอ) ---
-  if (["/profile", "/login", "/register" , "/schedule/register","/select-character","/select-major","/select-role","/admin"].includes(pathname)) return null;
+  // --- Check Page Visibility ---
+  // เช็คว่าถ้าไม่ใช่ Admin ให้แสดงผล (Admin มี Navbar ของตัวเอง หรือถ้าอยากซ่อนบางหน้าเพิ่มก็ใส่ใน array นี้)
+  if (["/login", "/register", "/select-character", "/select-major", "/select-role", "/admin", "/admin/assignments", "/admin/grading"].includes(pathname)) return null;
 
   return (
     <>
@@ -200,8 +242,8 @@ export default function FloatingNoti() {
                                             {selectedIds.includes(n.id) && <CheckCircle size={12} className="text-white"/>}
                                         </div>
                                     )}
-                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${n.type === 'grade' ? 'bg-blue-100 text-blue-600' : n.type === 'activity' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'}`}>
-                                        {n.type === 'grade' ? <BookOpen size={16}/> : n.type === 'activity' ? <Trophy size={16}/> : <Info size={16}/>}
+                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${n.type === 'grade' ? 'bg-blue-100 text-blue-600' : n.type === 'activity' ? 'bg-orange-100 text-orange-600' : n.type === 'assignment' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-600'}`}>
+                                        {n.type === 'grade' ? <Trophy size={16}/> : n.type === 'assignment' ? <BookOpen size={16}/> : <Info size={16}/>}
                                     </div>
                                     <div className="flex-1 pr-2 select-none">
                                         <div className="flex justify-between items-start">

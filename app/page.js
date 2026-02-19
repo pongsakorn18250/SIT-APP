@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 import {
@@ -18,6 +18,10 @@ export default function Home() {
   const [gpax, setGpax] = useState("0.00");
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // เก็บ Class IDs ไว้ใน Ref เพื่อให้ Realtime เข้าถึงค่าล่าสุดได้โดยไม่ต้องใส่ dependency
+  const myClassIdsRef = useRef([]); 
+  const userRef = useRef(null);
 
   // Modals States
   const [showCardModal, setShowCardModal] = useState(false);
@@ -26,11 +30,34 @@ export default function Home() {
   const [showLabModal, setShowLabModal] = useState(false);
   const [selectedStory, setSelectedStory] = useState(null);
 
-  // --- FETCH DATA ---
+  // --- FUNCTION: ดึงการบ้าน (แยกออกมาเพื่อให้เรียกซ้ำได้ตอน Realtime เด้ง) ---
+  const fetchMyAssignments = useCallback(async () => {
+      const classIds = myClassIdsRef.current;
+      const user = userRef.current;
+      if (classIds.length === 0 || !user) return;
+
+      // A. ดึงการบ้านทั้งหมด
+      const { data: assData } = await supabase.from("assignments")
+          .select("*, classes(subject_code, subject_name)")
+          .in("class_id", classIds)
+          .order("due_date", { ascending: true });
+      
+      // B. ดึงงานที่ส่งแล้ว
+      const { data: mySubs } = await supabase.from("submissions").select("assignment_id").eq("student_id", user.id);
+      const submittedIds = mySubs ? mySubs.map(s => s.assignment_id) : [];
+
+      // C. กรองเอาเฉพาะงานที่ "ยังไม่ส่ง"
+      const pendingAssignments = assData ? assData.filter(a => !submittedIds.includes(a.id)) : [];
+      
+      setAssignments(pendingAssignments.slice(0, 5)); // เอาแค่ 5 อันแรก
+  }, []);
+
+  // --- FETCH DATA INITIAL ---
   useEffect(() => {
     const initData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.replace("/register"); return; }
+      userRef.current = user;
 
       // 1. Get Profile
       const { data: profileData } = await supabase.from("profiles").select("*").eq("id", user.id).single();
@@ -39,6 +66,7 @@ export default function Home() {
       // 2. Get Enrollments & Class IDs
       const { data: myEnrolls } = await supabase.from("enrollments").select("class_id, grade").eq("user_id", user.id);
       const myClassIds = myEnrolls ? myEnrolls.map(e => e.class_id) : [];
+      myClassIdsRef.current = myClassIds; // เก็บใส่ Ref ไว้ใช้ใน Realtime
 
       // 3. Fetch Stories
       const { data: annData } = await supabase
@@ -48,22 +76,9 @@ export default function Home() {
         .order("start_date", { ascending: false });
       setAnnouncements(annData || []);
 
-      // 4. Fetch Assignments (เฉพาะวิชาที่เราลง & ยังไม่ส่ง)
+      // 4. Fetch Assignments (เรียกฟังก์ชันที่แยกไว้)
       if (myClassIds.length > 0) {
-        // A. ดึงการบ้านทั้งหมด
-        const { data: assData } = await supabase.from("assignments")
-          .select("*, classes(subject_code, subject_name)")
-          .in("class_id", myClassIds)
-          .order("due_date", { ascending: true });
-        
-        // B. ดึงงานที่ส่งแล้วของ user คนนี้
-        const { data: mySubs } = await supabase.from("submissions").select("assignment_id").eq("student_id", user.id);
-        const submittedIds = mySubs ? mySubs.map(s => s.assignment_id) : [];
-
-        // C. กรองเอาเฉพาะงานที่ "ยังไม่ส่ง"
-        const pendingAssignments = assData ? assData.filter(a => !submittedIds.includes(a.id)) : [];
-        
-        setAssignments(pendingAssignments.slice(0, 5)); // เอาแค่ 5 อันแรก
+        await fetchMyAssignments();
       }
 
       // 5. Fetch Rooms
@@ -78,8 +93,33 @@ export default function Home() {
     };
 
     initData();
-  }, []);
+  }, [fetchMyAssignments, router]);
 
+  // --- REALTIME LISTENER (Assignment Updates) ---
+  useEffect(() => {
+    // ตั้งค่า Realtime
+    const channel = supabase.channel('realtime-assignments-home')
+        .on(
+            'postgres_changes', 
+            { event: 'INSERT', schema: 'public', table: 'assignments' }, 
+            (payload) => {
+                // เช็คว่างานใหม่ที่เด้งมา เป็นของวิชาที่เราเรียนไหม?
+                if (myClassIdsRef.current.includes(payload.new.class_id)) {
+                    console.log("New Assignment Incoming! 📚 refreshing list...");
+                    // ถ้าใช่ ให้ดึงข้อมูลใหม่ทันที (เพื่อจะได้ชื่อวิชามาด้วย เพราะ Realtime ส่งมาแค่ ID)
+                    fetchMyAssignments();
+                }
+            }
+        )
+        .subscribe();
+
+    return () => {
+        supabase.removeChannel(channel);
+    };
+  }, [fetchMyAssignments]);
+
+
+  // --- Helper Functions ---
   const calculateGPAX = async (enrolls, classIds) => {
     if (!enrolls || enrolls.length === 0) return setGpax("0.00");
     const { data: classes } = await supabase.from("classes").select("id, credit").in("id", classIds);
@@ -227,7 +267,7 @@ export default function Home() {
           <div className="flex justify-between items-end mb-3 px-1">
             <h3 className="text-sm font-bold text-gray-800">Upcoming</h3>
             {/* ✅ ปุ่ม View All */}
-            <button onClick={() => router.push('/assignment')} className="text-xs font-bold text-blue-600 hover:underline">
+            <button onClick={() => router.push('/assignments')} className="text-xs font-bold text-blue-600 hover:underline">
                View All / History
             </button>
           </div>
@@ -256,10 +296,9 @@ export default function Home() {
               ))}
             </div>
           ) : (
-            // ✅ เปลี่ยนหน้าตาตอนไม่มีงาน (Empty State)
             <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 text-center">
               <p className="text-sm text-gray-400 mb-2">You're all caught up! 🎉</p>
-              <button onClick={() => router.push('/assignment')} className="text-xs font-bold text-blue-500 hover:underline">Check History</button>
+              <button onClick={() => router.push('/assignments')} className="text-xs font-bold text-blue-500 hover:underline">Check History</button>
             </div>
           )}
         </div>
@@ -289,7 +328,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ID Card, GPA, QR, Lab Modals -> Same as before (ย่อเพื่อประหยัดที่) */}
+      {/* ID Card, GPA, QR, Lab Modals -> Same as before */}
       {showCardModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fade-in" onClick={() => setShowCardModal(false)}><div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl relative flex flex-col" onClick={e => e.stopPropagation()}><div className="bg-blue-600 h-32 relative p-5 flex justify-between items-start shrink-0"><div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm"><span className="text-white font-bold text-xs tracking-widest">KMUTT</span></div><div className="text-right text-white/90"><p className="text-[10px] font-bold tracking-widest uppercase mb-1">Student ID Card</p><p className="text-[10px] opacity-75">SIT Faculty</p></div></div><div className="px-6 pb-8 text-center -mt-16 relative z-10 flex flex-col items-center"><div className="w-28 h-28 rounded-full border-4 border-white bg-gray-200 shadow-lg overflow-hidden mb-3 shrink-0"><img src={profile?.avatar} className="w-full h-full object-cover" /></div><h2 className="text-2xl font-extrabold text-gray-800 leading-tight mb-1">{profile?.first_name}</h2><p className="text-gray-500 font-bold text-sm mb-6 bg-gray-100 px-3 py-1 rounded-full">{profile?.major} Student</p><div className="bg-white border-2 border-dashed border-gray-200 p-4 rounded-xl w-full flex flex-col items-center gap-2 shadow-sm"><p className="text-2xl font-mono font-bold text-blue-600 tracking-widest">{getStudentIdDisplay()}</p><div className="bg-white p-1"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${profile?.student_id}`} className="w-32 h-32 mix-blend-multiply opacity-90" /></div><p className="text-[9px] text-gray-400 uppercase tracking-wide mt-1">Scan to Verify</p></div></div></div></div>)}
       {showGPAModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowGPAModal(false)}><div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full animate-pop-in" onClick={e => e.stopPropagation()}><div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4 text-purple-600"><Award size={32} /></div><h3 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-1">Current GPAX</h3><p className="text-5xl font-extrabold text-gray-800 mb-6">{gpax}</p><button onClick={() => { setShowGPAModal(false); router.push('/profile'); }} className="w-full py-3 bg-gray-100 rounded-xl font-bold text-gray-600 hover:bg-gray-200">View Transcript</button></div></div>)}
       {showQRModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowQRModal(false)}><div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full" onClick={e => e.stopPropagation()}><h3 className="text-xl font-bold text-gray-800 mb-4">Access Pass Key</h3><div className="bg-white p-2 border-2 border-dashed border-gray-300 rounded-xl mb-4"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=ACCESS:${profile?.student_id}:${new Date().toISOString()}`} className="w-full aspect-square" /></div><p className="text-xs text-gray-400">Scan this QR to enter Library or Lab rooms.</p></div></div>)}
