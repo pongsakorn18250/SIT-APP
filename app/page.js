@@ -267,7 +267,7 @@ export default function Home() {
           <div className="flex justify-between items-end mb-3 px-1">
             <h3 className="text-sm font-bold text-gray-800">Upcoming</h3>
             {/* ✅ ปุ่ม View All */}
-            <button onClick={() => router.push('/assignments')} className="text-xs font-bold text-blue-600 hover:underline">
+            <button onClick={() => router.push('/assignment')} className="text-xs font-bold text-blue-600 hover:underline">
                View All / History
             </button>
           </div>
@@ -298,7 +298,7 @@ export default function Home() {
           ) : (
             <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 text-center">
               <p className="text-sm text-gray-400 mb-2">You're all caught up! 🎉</p>
-              <button onClick={() => router.push('/assignments')} className="text-xs font-bold text-blue-500 hover:underline">Check History</button>
+              <button onClick={() => router.push('/assignment')} className="text-xs font-bold text-blue-500 hover:underline">Check History</button>
             </div>
           )}
         </div>
