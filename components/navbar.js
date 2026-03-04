@@ -86,8 +86,11 @@ export default function Navbar() {
           {isAdmin ? (
             <>
               <NavItemMobile href="/admin" icon={ShieldAlert} label="Console" active={pathname === "/admin"} theme={theme} />
+              {/* 🌟 เพิ่ม Insider ตรงนี้ */}
+              <NavItemMobile href="/admin/insider" icon={Rss} label="Insider" active={pathname === "/admin/insider"} theme={theme} />
               <NavItemMobile href="/admin/announcements" icon={Megaphone} label="News" active={pathname === "/admin/announcements"} theme={theme} />
-              <NavItemMobile href="/admin/grading" icon={CheckCircle} label="Work" active={pathname === "/admin/grading"} theme={theme} /><NavItemMobile href="/admin/assignments" icon={Calendar} label="Assign" active={pathname === "/admin/assignments"} theme={theme} />
+              <NavItemMobile href="/admin/grading" icon={CheckCircle} label="Work" active={pathname === "/admin/grading"} theme={theme} />
+              <NavItemMobile href="/admin/assignments" icon={Calendar} label="Assign" active={pathname === "/admin/assignments"} theme={theme} />
               <NavItemMobile href="/profile" icon={User} label="Profile" active={pathname === "/profile"} theme={theme} />
             </>
           ) : (
@@ -128,6 +131,10 @@ export default function Navbar() {
             <>
               <div className="px-3 mb-2 text-xs font-bold opacity-50 uppercase tracking-wider">Management</div>
               <NavItemDesktop href="/admin" icon={ShieldAlert} label="Admin Console" active={pathname === "/admin"} theme={theme} />
+              
+              {/* 🌟 เพิ่ม Insider แบบ Desktop ตรงนี้ */}
+              <NavItemDesktop href="/admin/insider" icon={Rss} label="SIT Insider" active={pathname === "/admin/insider"} theme={theme} />
+              
               <NavItemDesktop href="/admin/announcements" icon={Megaphone} label="News / Stories" active={pathname === "/admin/announcements"} theme={theme} />
               <NavItemDesktop href="/admin/assignments" icon={Calendar} label="Assignments" active={pathname === "/admin/assignments"} theme={theme} />
               <NavItemDesktop href="/admin/grading" icon={CheckCircle} label="Work Console" active={pathname === "/admin/grading"} theme={theme} />
@@ -155,7 +162,7 @@ export default function Navbar() {
 
       {/* ================= MODALS ================= */}
 
-      {/* 1. Avatar Selection Modal (FULL CODE) */}
+      {/* 1. Avatar Selection Modal */}
       {showAvatarModal && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowAvatarModal(false)}>
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
@@ -181,7 +188,7 @@ export default function Navbar() {
         </div>
       )}
 
-      {/* 2. Logout Confirmation Modal (FULL CODE) */}
+      {/* 2. Logout Confirmation Modal */}
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowLogoutConfirm(false)}>
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center relative overflow-hidden animate-pop-in" onClick={e => e.stopPropagation()}>
