@@ -15,14 +15,10 @@ export default function SITInsider() {
   const [clubs, setClubs] = useState([]);
   const [user, setUser] = useState(null);
 
-  // States เก็บการเข้าร่วม
-  const [joinedEvents, setJoinedEvents] = useState([]);
-  const [joinedClubs, setJoinedClubs] = useState([]);
-
-  // States สำหรับเปิด-ปิด โหมด View All บริษัท
+  const [joinedEvents, setJoinedEvents] = useState({});
+  const [joinedClubs, setJoinedClubs] = useState({});
   const [showAllCompanies, setShowAllCompanies] = useState(false);
 
-  // States สำหรับระบบ Modal (ป๊อปอัปดูรายละเอียด)
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedClub, setSelectedClub] = useState(null);
@@ -36,46 +32,57 @@ export default function SITInsider() {
     if (!user) { router.push("/register"); return; }
     setUser(user);
 
-    // ดึงข้อมูล (สังเกต companies จะเรียงตาม rank จากน้อยไปมาก)
+    const currentTime = new Date().toISOString();
+
     const [compRes, eventRes, clubRes, joinedEvtRes, joinedClubRes] = await Promise.all([
         supabase.from('companies').select('*').order('rank', { ascending: true }),
-        supabase.from('events').select('*').order('event_date', { ascending: true }),
+        supabase.from('events').select('*').gte('event_date', currentTime).order('event_date', { ascending: true }),
         supabase.from('clubs').select('*').order('member_count', { ascending: false }),
-        supabase.from('event_participants').select('event_id').eq('user_id', user.id),
-        supabase.from('club_members').select('club_id').eq('user_id', user.id)
+        supabase.from('event_participants').select('event_id, status').eq('user_id', user.id),
+        supabase.from('club_members').select('club_id, status').eq('user_id', user.id)
     ]);
 
     setCompanies(compRes.data || []);
     setEvents(eventRes.data || []);
     setClubs(clubRes.data || []);
     
-    setJoinedEvents(joinedEvtRes.data?.map(e => e.event_id) || []);
-    setJoinedClubs(joinedClubRes.data?.map(c => c.club_id) || []);
+    const evtStatusMap = {};
+    joinedEvtRes.data?.forEach(e => evtStatusMap[e.event_id] = e.status);
+    setJoinedEvents(evtStatusMap);
+
+    const clubStatusMap = {};
+    joinedClubRes.data?.forEach(c => clubStatusMap[c.club_id] = c.status);
+    setJoinedClubs(clubStatusMap);
     
     setLoading(false);
   };
 
   const handleJoinEvent = async (e, eventId) => {
-      e.stopPropagation(); // ป้องกันไม่ให้ทะลุไปเปิด Modal เวลากดปุ่ม
-      if (joinedEvents.includes(eventId)) return;
+      e.stopPropagation(); 
+      if (joinedEvents[eventId]) return;
       const { error } = await supabase.from('event_participants').insert({ event_id: eventId, user_id: user.id });
       if (!error) {
-          setJoinedEvents(prev => [...prev, eventId]);
+          setJoinedEvents(prev => ({ ...prev, [eventId]: 'pending' }));
           alert("ส่งคำขอเข้าร่วมแล้ว! รอ Admin อนุมัติเพื่อรับชั่วโมงกิจกรรม ⏳");
       }
   };
 
   const handleJoinClub = async (e, clubId) => {
-      e.stopPropagation(); // ป้องกันไม่ให้ทะลุไปเปิด Modal
-      if (joinedClubs.includes(clubId)) return;
+      e.stopPropagation(); 
+      if (joinedClubs[clubId]) return;
       const { error } = await supabase.from('club_members').insert({ club_id: clubId, user_id: user.id });
       if (!error) {
-          setJoinedClubs(prev => [...prev, clubId]);
+          setJoinedClubs(prev => ({ ...prev, [clubId]: 'pending' }));
           alert("ส่งคำขอเข้าชมรมแล้ว! รอประธาน/Admin อนุมัติ ⏳");
       }
   };
 
-  // ตัดแบ่งบริษัทที่จะโชว์ (ถ้าไม่ View All ให้โชว์แค่ 3 อันดับแรก)
+  // 🌟 ฟังก์ชันแปลงเวลา (ตัดวินาทีทิ้ง โชว์แค่ ชม:นาที)
+  const formatDateTime = (isoString) => {
+      const date = new Date(isoString);
+      return date.toLocaleDateString('th-TH') + ' ' + date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+  };
+
   const displayedCompanies = showAllCompanies ? companies : companies.slice(0, 3);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-600"/></div>;
@@ -95,30 +102,20 @@ export default function SITInsider() {
             <div className="flex justify-between items-end mb-4">
                 <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Building2 className="text-blue-500"/> Top Company</h2>
                 {companies.length > 3 && (
-                    <button 
-                        onClick={() => setShowAllCompanies(!showAllCompanies)} 
-                        className="text-xs font-bold text-blue-600 hover:underline"
-                    >
+                    <button onClick={() => setShowAllCompanies(!showAllCompanies)} className="text-xs font-bold text-blue-600 hover:underline">
                         {showAllCompanies ? "Show Less" : "View All"}
                     </button>
                 )}
             </div>
-            
             <div className="grid md:grid-cols-2 gap-4">
                 {companies.length === 0 ? <EmptyState text="No companies listed yet."/> : 
                     displayedCompanies.map((comp, index) => (
-                        <div 
-                            key={comp.id} 
-                            onClick={() => setSelectedCompany(comp)}
-                            className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex items-start gap-4 cursor-pointer relative overflow-hidden"
-                        >
-                            {/* ป้ายบอกอันดับ (Rank) */}
+                        <div key={comp.id} onClick={() => setSelectedCompany(comp)} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex items-start gap-4 cursor-pointer relative overflow-hidden">
                             {!showAllCompanies && index < 3 && (
                                 <div className={`absolute top-0 right-0 px-3 py-1 text-[10px] font-bold text-white rounded-bl-xl ${index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : 'bg-orange-400'}`}>
                                     Rank {index + 1}
                                 </div>
                             )}
-
                             <div className="w-14 h-14 bg-gray-100 rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
                                 {comp.logo_url ? <img src={comp.logo_url} className="w-full h-full object-cover"/> : <Briefcase className="text-gray-400"/>}
                             </div>
@@ -138,23 +135,22 @@ export default function SITInsider() {
             </div>
         </section>
 
-        {/* 🎪 2. Events */}
+        {/* 🎪 2. Events (🌟 อัปเดต UI เลื่อนซ้ายขวา และบีบขนาดให้พอดีจอ) */}
         <section>
             <div className="flex justify-between items-end mb-4">
                 <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Calendar className="text-orange-500"/> Upcoming Events</h2>
             </div>
-
-            <div className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 no-scrollbar md:grid md:grid-cols-3">
+            {/* เอา md:grid ออก เปลี่ยนให้ใช้ flex เลื่อนซ้ายขวาล้วนๆ */}
+            <div className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 no-scrollbar">
                 {events.length === 0 ? <div className="w-full"><EmptyState text="No upcoming events."/></div> : 
                     events.map(evt => {
-                        const isJoined = joinedEvents.includes(evt.id);
+                        const userStatus = joinedEvents[evt.id]; 
+                        const isJoinedOrPending = userStatus === 'pending' || userStatus === 'approved';
+
                         return (
-                            <div 
-                                key={evt.id} 
-                                onClick={() => setSelectedEvent(evt)}
-                                className="min-w-[260px] md:min-w-0 bg-white rounded-3xl border border-gray-100 shadow-sm snap-center shrink-0 overflow-hidden flex flex-col cursor-pointer hover:shadow-md transition-all"
-                            >
-                                <div className="h-32 bg-gray-200 relative">
+                            // 🌟 บังคับความกว้าง (Mobile 280px / Desktop 300px) การ์ดจะได้ไม่ล้นจอ
+                            <div key={evt.id} onClick={() => setSelectedEvent(evt)} className="w-[280px] md:w-[300px] shrink-0 snap-start bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col cursor-pointer hover:shadow-md transition-all">
+                                <div className="h-32 bg-gray-200 relative w-full">
                                     {evt.image_url ? <img src={evt.image_url} className="w-full h-full object-cover"/> : <div className="w-full h-full bg-gradient-to-tr from-orange-200 to-red-300"></div>}
                                     <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 text-orange-600 shadow-sm">
                                         <Trophy size={12}/> +{evt.activity_hours} Hrs
@@ -165,16 +161,21 @@ export default function SITInsider() {
                                     <h3 className="font-bold text-gray-800 leading-tight mb-3 line-clamp-2">{evt.title}</h3>
                                     
                                     <div className="space-y-1 mb-4 mt-auto">
-                                        <p className="text-xs text-gray-500 flex items-center gap-2"><Clock size={12}/> {new Date(evt.event_date).toLocaleString()}</p>
+                                        <p className="text-xs text-gray-500 flex items-center gap-2"><Clock size={12}/> {formatDateTime(evt.event_date)}</p>
                                         <p className="text-xs text-gray-500 flex items-center gap-2"><MapPin size={12}/> {evt.location || 'TBA'}</p>
                                     </div>
 
                                     <button 
                                         onClick={(e) => handleJoinEvent(e, evt.id)}
-                                        disabled={isJoined}
-                                        className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${isJoined ? 'bg-orange-50 text-orange-600' : 'bg-gray-900 text-white hover:bg-gray-800'}`}
+                                        disabled={isJoinedOrPending}
+                                        className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all 
+                                            ${userStatus === 'approved' ? 'bg-green-50 text-green-600' 
+                                            : userStatus === 'pending' ? 'bg-orange-50 text-orange-600' 
+                                            : 'bg-gray-900 text-white hover:bg-gray-800'}`}
                                     >
-                                        {isJoined ? <><CheckCircle size={16}/> Requested</> : 'Quick Join'}
+                                        {userStatus === 'approved' ? <><CheckCircle size={16}/> Joined</> 
+                                         : userStatus === 'pending' ? <><Clock size={16}/> Requested</> 
+                                         : 'Quick Join'}
                                     </button>
                                 </div>
                             </div>
@@ -203,17 +204,14 @@ export default function SITInsider() {
             <div className="flex justify-between items-end mb-4">
                 <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Users className="text-purple-500"/> All Clubs</h2>
             </div>
-
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {clubs.length === 0 ? <div className="col-span-full"><EmptyState text="No clubs available."/></div> : 
                     clubs.map(club => {
-                        const isJoined = joinedClubs.includes(club.id);
+                        const userStatus = joinedClubs[club.id];
+                        const isJoinedOrPending = userStatus === 'pending' || userStatus === 'approved';
+
                         return (
-                            <div 
-                                key={club.id} 
-                                onClick={() => setSelectedClub(club)}
-                                className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm text-center flex flex-col items-center hover:shadow-md transition-all cursor-pointer"
-                            >
+                            <div key={club.id} onClick={() => setSelectedClub(club)} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm text-center flex flex-col items-center hover:shadow-md transition-all cursor-pointer">
                                 <div className="w-16 h-16 bg-purple-50 rounded-full mb-3 flex items-center justify-center overflow-hidden">
                                     {club.logo_url ? <img src={club.logo_url} className="w-full h-full object-cover"/> : <Users className="text-purple-300" size={24}/>}
                                 </div>
@@ -222,10 +220,15 @@ export default function SITInsider() {
                                 
                                 <button 
                                     onClick={(e) => handleJoinClub(e, club.id)}
-                                    disabled={isJoined}
-                                    className={`w-full mt-auto py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all ${isJoined ? 'bg-purple-50 text-purple-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                    disabled={isJoinedOrPending}
+                                    className={`w-full mt-auto py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all 
+                                        ${userStatus === 'approved' ? 'bg-green-50 text-green-600' 
+                                        : userStatus === 'pending' ? 'bg-purple-50 text-purple-600' 
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                                 >
-                                    {isJoined ? <><CheckCircle size={14}/> Requested</> : <><PlusCircle size={14}/> Join</>}
+                                    {userStatus === 'approved' ? <><CheckCircle size={14}/> Joined</> 
+                                     : userStatus === 'pending' ? <><Clock size={14}/> Requested</> 
+                                     : <><PlusCircle size={14}/> Join</>}
                                 </button>
                             </div>
                         )
@@ -236,10 +239,8 @@ export default function SITInsider() {
       </div>
 
       {/* ========================================= */}
-      {/* 🛑 MODALS (ป๊อปอัปดูรายละเอียด) */}
+      {/* 🛑 MODALS */}
       {/* ========================================= */}
-
-      {/* 1. Modal: Company */}
       {selectedCompany && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedCompany(null)}>
             <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -269,7 +270,6 @@ export default function SITInsider() {
         </div>
       )}
 
-      {/* 2. Modal: Event */}
       {selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedEvent(null)}>
             <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -285,7 +285,7 @@ export default function SITInsider() {
                         </span>
                     </div>
                     <div className="space-y-2 mb-6 bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                        <p className="text-sm text-gray-600 flex items-center gap-3"><Clock size={16} className="text-gray-400"/> <strong>Date:</strong> {new Date(selectedEvent.event_date).toLocaleString()}</p>
+                        <p className="text-sm text-gray-600 flex items-center gap-3"><Clock size={16} className="text-gray-400"/> <strong>Date:</strong> {formatDateTime(selectedEvent.event_date)}</p>
                         <p className="text-sm text-gray-600 flex items-center gap-3"><MapPin size={16} className="text-gray-400"/> <strong>Location:</strong> {selectedEvent.location || 'TBA'}</p>
                     </div>
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Event Details</h4>
@@ -295,17 +295,21 @@ export default function SITInsider() {
                     
                     <button 
                         onClick={(e) => { handleJoinEvent(e, selectedEvent.id); setSelectedEvent(null); }}
-                        disabled={joinedEvents.includes(selectedEvent.id)}
-                        className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${joinedEvents.includes(selectedEvent.id) ? 'bg-orange-50 text-orange-600' : 'bg-gray-900 text-white hover:bg-gray-800'}`}
+                        disabled={joinedEvents[selectedEvent.id] === 'pending' || joinedEvents[selectedEvent.id] === 'approved'}
+                        className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all 
+                            ${joinedEvents[selectedEvent.id] === 'approved' ? 'bg-green-50 text-green-600' 
+                            : joinedEvents[selectedEvent.id] === 'pending' ? 'bg-orange-50 text-orange-600' 
+                            : 'bg-gray-900 text-white hover:bg-gray-800'}`}
                     >
-                        {joinedEvents.includes(selectedEvent.id) ? 'Requested (Pending Approval)' : 'Request to Join Event'}
+                        {joinedEvents[selectedEvent.id] === 'approved' ? <><CheckCircle size={20}/> You're In! (Joined)</>
+                         : joinedEvents[selectedEvent.id] === 'pending' ? <><Clock size={20}/> Requested (Pending)</>
+                         : 'Request to Join Event'}
                     </button>
                 </div>
             </div>
         </div>
       )}
 
-      {/* 3. Modal: Club */}
       {selectedClub && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedClub(null)}>
             <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl text-center p-6 relative" onClick={e => e.stopPropagation()}>
@@ -322,10 +326,15 @@ export default function SITInsider() {
 
                 <button 
                     onClick={(e) => { handleJoinClub(e, selectedClub.id); setSelectedClub(null); }}
-                    disabled={joinedClubs.includes(selectedClub.id)}
-                    className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${joinedClubs.includes(selectedClub.id) ? 'bg-purple-50 text-purple-600' : 'bg-purple-600 text-white hover:bg-purple-700'}`}
+                    disabled={joinedClubs[selectedClub.id] === 'pending' || joinedClubs[selectedClub.id] === 'approved'}
+                    className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all 
+                        ${joinedClubs[selectedClub.id] === 'approved' ? 'bg-green-50 text-green-600' 
+                        : joinedClubs[selectedClub.id] === 'pending' ? 'bg-purple-50 text-purple-600' 
+                        : 'bg-purple-600 text-white hover:bg-purple-700'}`}
                 >
-                    {joinedClubs.includes(selectedClub.id) ? 'Request Sent' : 'Join this Club'}
+                    {joinedClubs[selectedClub.id] === 'approved' ? <><CheckCircle size={18}/> Member</>
+                     : joinedClubs[selectedClub.id] === 'pending' ? <><Clock size={18}/> Request Sent</>
+                     : 'Join this Club'}
                 </button>
             </div>
         </div>
