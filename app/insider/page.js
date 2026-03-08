@@ -67,23 +67,56 @@ export default function SITInsider() {
       }
   };
 
+  // 🌟 อัปเดต: ระบบ Join Club (เช็คว่ามีชมรมหรือยัง)
   const handleJoinClub = async (e, clubId) => {
       e.stopPropagation(); 
-      if (joinedClubs[clubId]) return;
+      // เช็คว่ามีข้อมูลใน Object joinedClubs หรือไม่ (ถ้ามีแสดงว่ามีชมรมแล้ว)
+      const hasJoinedAnyClub = Object.keys(joinedClubs).length > 0;
+      
+      if (hasJoinedAnyClub) {
+          alert("คุณสามารถเข้าร่วมได้เพียง 1 ชมรมเท่านั้น!");
+          return;
+      }
+
       const { error } = await supabase.from('club_members').insert({ club_id: clubId, user_id: user.id });
       if (!error) {
-          setJoinedClubs(prev => ({ ...prev, [clubId]: 'pending' }));
+          setJoinedClubs({ [clubId]: 'pending' }); // ใส่ข้อมูลชมรมใหม่เข้าไป
           alert("ส่งคำขอเข้าชมรมแล้ว! รอประธาน/Admin อนุมัติ ⏳");
       }
   };
 
-  // 🌟 ฟังก์ชันแปลงเวลา (ตัดวินาทีทิ้ง โชว์แค่ ชม:นาที)
+  // 🌟 ฟังก์ชันใหม่: ระบบลาออก / ยกเลิกคำขอ
+  const handleLeaveClub = async (e, clubId) => {
+      e.stopPropagation();
+      const status = joinedClubs[clubId];
+      const confirmMsg = status === 'pending' ? "ต้องการยกเลิกคำขอเข้าชมรมนี้ใช่หรือไม่?" : "แน่ใจนะว่าจะลาออกจากชมรม? (จะต้องรออนุมัติใหม่หากเข้าชมรมอื่น)";
+      
+      if (!confirm(confirmMsg)) return;
+
+      const { error } = await supabase
+          .from('club_members')
+          .delete()
+          .eq('club_id', clubId)
+          .eq('user_id', user.id);
+
+      if (!error) {
+          setJoinedClubs({}); // ล้างข้อมูลชมรมออก (ตอนนี้กลายเป็นคนไร้สังกัดแล้ว)
+          alert("ดำเนินการเรียบร้อยแล้ว!");
+          setSelectedClub(null); // ปิดหน้าต่าง Modal
+      } else {
+          alert("เกิดข้อผิดพลาด: " + error.message);
+      }
+  };
+
   const formatDateTime = (isoString) => {
       const date = new Date(isoString);
       return date.toLocaleDateString('th-TH') + ' ' + date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
   };
 
   const displayedCompanies = showAllCompanies ? companies : companies.slice(0, 3);
+  
+  // 🌟 ตัวแปรเช็คว่า User คนนี้มีสังกัดชมรมใดชมรมหนึ่งหรือยัง
+  const hasJoinedAnyClub = Object.keys(joinedClubs).length > 0;
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-600"/></div>;
 
@@ -135,12 +168,11 @@ export default function SITInsider() {
             </div>
         </section>
 
-        {/* 🎪 2. Events (🌟 อัปเดต UI เลื่อนซ้ายขวา และบีบขนาดให้พอดีจอ) */}
+        {/* 🎪 2. Events */}
         <section>
             <div className="flex justify-between items-end mb-4">
                 <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Calendar className="text-orange-500"/> Upcoming Events</h2>
             </div>
-            {/* เอา md:grid ออก เปลี่ยนให้ใช้ flex เลื่อนซ้ายขวาล้วนๆ */}
             <div className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 no-scrollbar">
                 {events.length === 0 ? <div className="w-full"><EmptyState text="No upcoming events."/></div> : 
                     events.map(evt => {
@@ -148,7 +180,6 @@ export default function SITInsider() {
                         const isJoinedOrPending = userStatus === 'pending' || userStatus === 'approved';
 
                         return (
-                            // 🌟 บังคับความกว้าง (Mobile 280px / Desktop 300px) การ์ดจะได้ไม่ล้นจอ
                             <div key={evt.id} onClick={() => setSelectedEvent(evt)} className="w-[280px] md:w-[300px] shrink-0 snap-start bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col cursor-pointer hover:shadow-md transition-all">
                                 <div className="h-32 bg-gray-200 relative w-full">
                                     {evt.image_url ? <img src={evt.image_url} className="w-full h-full object-cover"/> : <div className="w-full h-full bg-gradient-to-tr from-orange-200 to-red-300"></div>}
@@ -208,10 +239,12 @@ export default function SITInsider() {
                 {clubs.length === 0 ? <div className="col-span-full"><EmptyState text="No clubs available."/></div> : 
                     clubs.map(club => {
                         const userStatus = joinedClubs[club.id];
-                        const isJoinedOrPending = userStatus === 'pending' || userStatus === 'approved';
+                        
+                        // ถ้ายูสเซอร์มีชมรมอื่นแล้ว และชมรมนี้ไม่ใช่ชมรมตัวเอง ให้ล็อคปุ่มไปเลย
+                        const isLockedOut = hasJoinedAnyClub && !userStatus;
 
                         return (
-                            <div key={club.id} onClick={() => setSelectedClub(club)} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm text-center flex flex-col items-center hover:shadow-md transition-all cursor-pointer">
+                            <div key={club.id} onClick={() => setSelectedClub(club)} className={`bg-white p-4 rounded-3xl border border-gray-100 shadow-sm text-center flex flex-col items-center transition-all cursor-pointer ${isLockedOut ? 'opacity-60 grayscale-[50%]' : 'hover:shadow-md'}`}>
                                 <div className="w-16 h-16 bg-purple-50 rounded-full mb-3 flex items-center justify-center overflow-hidden">
                                     {club.logo_url ? <img src={club.logo_url} className="w-full h-full object-cover"/> : <Users className="text-purple-300" size={24}/>}
                                 </div>
@@ -220,14 +253,16 @@ export default function SITInsider() {
                                 
                                 <button 
                                     onClick={(e) => handleJoinClub(e, club.id)}
-                                    disabled={isJoinedOrPending}
+                                    disabled={userStatus || isLockedOut}
                                     className={`w-full mt-auto py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all 
                                         ${userStatus === 'approved' ? 'bg-green-50 text-green-600' 
                                         : userStatus === 'pending' ? 'bg-purple-50 text-purple-600' 
+                                        : isLockedOut ? 'bg-gray-100 text-gray-400' 
                                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                                 >
-                                    {userStatus === 'approved' ? <><CheckCircle size={14}/> Joined</> 
+                                    {userStatus === 'approved' ? <><CheckCircle size={14}/> Member</> 
                                      : userStatus === 'pending' ? <><Clock size={14}/> Requested</> 
+                                     : isLockedOut ? <><X size={14}/> 1 Club Limit</>
                                      : <><PlusCircle size={14}/> Join</>}
                                 </button>
                             </div>
@@ -324,18 +359,24 @@ export default function SITInsider() {
                     {selectedClub.description || "Join us to learn, share, and grow together!"}
                 </p>
 
-                <button 
-                    onClick={(e) => { handleJoinClub(e, selectedClub.id); setSelectedClub(null); }}
-                    disabled={joinedClubs[selectedClub.id] === 'pending' || joinedClubs[selectedClub.id] === 'approved'}
-                    className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all 
-                        ${joinedClubs[selectedClub.id] === 'approved' ? 'bg-green-50 text-green-600' 
-                        : joinedClubs[selectedClub.id] === 'pending' ? 'bg-purple-50 text-purple-600' 
-                        : 'bg-purple-600 text-white hover:bg-purple-700'}`}
-                >
-                    {joinedClubs[selectedClub.id] === 'approved' ? <><CheckCircle size={18}/> Member</>
-                     : joinedClubs[selectedClub.id] === 'pending' ? <><Clock size={18}/> Request Sent</>
-                     : 'Join this Club'}
-                </button>
+                {/* 🌟 ถ้าเป็นสมาชิกอยู่ หรือกด Join ไปแล้ว ให้ขึ้นปุ่มสีแดงเพื่อลาออกแทน! */}
+                {joinedClubs[selectedClub.id] ? (
+                    <button 
+                        onClick={(e) => handleLeaveClub(e, selectedClub.id)}
+                        className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all bg-red-50 text-red-500 hover:bg-red-100"
+                    >
+                        <X size={18}/> {joinedClubs[selectedClub.id] === 'pending' ? 'Cancel Request' : 'Leave Club'}
+                    </button>
+                ) : (
+                    <button 
+                        onClick={(e) => { handleJoinClub(e, selectedClub.id); setSelectedClub(null); }}
+                        disabled={hasJoinedAnyClub}
+                        className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all 
+                            ${hasJoinedAnyClub ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-purple-600 text-white hover:bg-purple-700'}`}
+                    >
+                        {hasJoinedAnyClub ? <><X size={18}/> 1 Club Limit Reached</> : 'Join this Club'}
+                    </button>
+                )}
             </div>
         </div>
       )}

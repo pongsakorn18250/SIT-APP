@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabase"; 
 import { 
-  Bell, X, BookOpen, Trophy, Info, CheckCircle, Trash2, MoreHorizontal 
+  Bell, X, BookOpen, Trophy, Info, CheckCircle, Trash2, MoreHorizontal, 
+  Building2, Calendar, Users // 🌟 เพิ่ม Icon ใหม่
 } from "lucide-react";
 import { usePathname } from "next/navigation"; 
 
@@ -47,12 +48,10 @@ export default function FloatingNoti() {
     setUnreadCount(formattedNotis.filter(n => !n.isRead).length);
   }, []);
 
-  // --- 2. Realtime Subscription Logic (NEW!) ---
+  // --- 2. Realtime Subscription Logic ---
   useEffect(() => {
-    // 2.1 โหลดข้อมูลครั้งแรก
     fetchNotis();
 
-    // 2.2 ตั้งค่า Realtime Listener
     let channel;
     const setupRealtime = async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -66,11 +65,9 @@ export default function FloatingNoti() {
                     event: 'INSERT', 
                     schema: 'public', 
                     table: 'notifications',
-                    filter: `user_id=eq.${user.id}` // ดักฟังเฉพาะของ User เรา
+                    filter: `user_id=eq.${user.id}` 
                 }, 
                 (payload) => {
-                    // console.log("New Noti Arrived!", payload.new);
-                    
                     const newNoti = {
                         id: payload.new.id,
                         type: payload.new.type || 'info',
@@ -80,7 +77,6 @@ export default function FloatingNoti() {
                         isRead: false
                     };
 
-                    // Update UI ทันที
                     setNotifications((prev) => [newNoti, ...prev]);
                     setUnreadCount((prev) => prev + 1);
                 }
@@ -90,12 +86,10 @@ export default function FloatingNoti() {
 
     setupRealtime();
 
-    // Cleanup เมื่อปิด Component
     return () => {
         if (channel) supabase.removeChannel(channel);
     };
-
-  }, [fetchNotis]); // เอา dependency อื่นออก เพื่อป้องกันการ Re-subscribe บ่อยเกินไป
+  }, [fetchNotis]); 
 
   // --- Actions ---
   const toggleOpen = () => {
@@ -174,14 +168,37 @@ export default function FloatingNoti() {
       return count;
   };
 
-  // --- Check Page Visibility ---
-  // เช็คว่าถ้าไม่ใช่ Admin ให้แสดงผล (Admin มี Navbar ของตัวเอง หรือถ้าอยากซ่อนบางหน้าเพิ่มก็ใส่ใน array นี้)
+  // 🌟 ฟังก์ชันตัวช่วยดึง Icon ตามประเภท (จะได้ไม่รกโค้ดข้างล่าง)
+  const getNotiIcon = (type) => {
+      switch(type) {
+          case 'grade': return <Trophy size={16}/>;
+          case 'assignment': return <BookOpen size={16}/>;
+          case 'activity': return <CheckCircle size={16}/>;
+          case 'club': return <Users size={16}/>;
+          case 'event': return <Calendar size={16}/>;
+          case 'company': return <Building2 size={16}/>;
+          default: return <Info size={16}/>;
+      }
+  };
+
+  // 🌟 ฟังก์ชันตัวช่วยดึงสีตามประเภท
+  const getNotiStyle = (type) => {
+      switch(type) {
+          case 'grade': return 'bg-yellow-100 text-yellow-600';
+          case 'assignment': return 'bg-indigo-100 text-indigo-600';
+          case 'activity': return 'bg-green-100 text-green-600';
+          case 'club': return 'bg-purple-100 text-purple-600';
+          case 'event': return 'bg-orange-100 text-orange-600';
+          case 'company': return 'bg-blue-100 text-blue-600';
+          default: return 'bg-gray-100 text-gray-600';
+      }
+  };
+
   if (["/login", "/register", "/select-character", "/select-major", "/select-role", "/admin", "/admin/assignments", "/admin/grading"].includes(pathname)) return null;
 
   return (
     <>
-      {/* Floating Button */}
-      <div className="absolute top-4 right-4 z-50 flex flex-col items-end gap-2 md:top-6 md:right-8">
+      <div className="absolute top-4 right-4 z-[99] flex flex-col items-end gap-2 md:top-6 md:right-8">
           <div className="relative">
             <button 
                 onClick={toggleOpen} 
@@ -195,9 +212,8 @@ export default function FloatingNoti() {
                 )}
             </button>
 
-            {/* Popup */}
             {isOpen && (
-                <div className="absolute top-14 right-0 w-80 md:w-96 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden animate-fade-in-up origin-top-right z-50 select-none">
+                <div className="absolute top-14 right-0 w-80 md:w-96 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden animate-fade-in-up origin-top-right z-[100] select-none">
                     <div className={`p-3 border-b flex justify-between items-center ${isSelectionMode ? 'bg-blue-50' : 'bg-gray-50'}`}>
                         {isSelectionMode ? (
                             <>
@@ -242,9 +258,12 @@ export default function FloatingNoti() {
                                             {selectedIds.includes(n.id) && <CheckCircle size={12} className="text-white"/>}
                                         </div>
                                     )}
-                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${n.type === 'grade' ? 'bg-blue-100 text-blue-600' : n.type === 'activity' ? 'bg-orange-100 text-orange-600' : n.type === 'assignment' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-600'}`}>
-                                        {n.type === 'grade' ? <Trophy size={16}/> : n.type === 'assignment' ? <BookOpen size={16}/> : <Info size={16}/>}
+                                    
+                                    {/* 🌟 แสดงไอคอนและสีที่ดึงมาจากฟังก์ชัน */}
+                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${getNotiStyle(n.type)}`}>
+                                        {getNotiIcon(n.type)}
                                     </div>
+
                                     <div className="flex-1 pr-2 select-none">
                                         <div className="flex justify-between items-start">
                                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">{n.type}</p>
@@ -269,7 +288,10 @@ export default function FloatingNoti() {
           <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl p-6 w-full max-w-sm relative">
                   <button onClick={() => setSelectedNoti(null)} className="absolute top-4 right-4"><X/></button>
-                  <h3 className="font-bold text-lg mb-2">{selectedNoti.title}</h3>
+                  <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
+                      <span className={getNotiStyle(selectedNoti.type).replace('bg-', 'text-').split(' ')[1]}>{getNotiIcon(selectedNoti.type)}</span>
+                      {selectedNoti.title}
+                  </h3>
                   <p className="text-sm text-gray-600 mb-4">{selectedNoti.desc}</p>
                   <p className="text-xs text-gray-400">{new Date(selectedNoti.timestamp).toLocaleString()}</p>
               </div>
