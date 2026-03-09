@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 import {
   MapPin, QrCode, CreditCard, Award, Zap, ChevronRight,
-  BookOpen, Monitor, X, Loader2, ExternalLink, Clock
+  BookOpen, Monitor, X, Loader2, ExternalLink, Clock, Calendar, Users
 } from "lucide-react";
 
 export default function Home() {
@@ -18,6 +18,11 @@ export default function Home() {
   const [gpax, setGpax] = useState("0.00");
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // 🌟 States ใหม่สำหรับ Insider (My Events & My Club)
+  const [myEvents, setMyEvents] = useState([]);
+  const [myClub, setMyClub] = useState(null);
+  const [myClubStatus, setMyClubStatus] = useState(null); // 'pending' | 'approved'
   
   // เก็บ Class IDs ไว้ใน Ref เพื่อให้ Realtime เข้าถึงค่าล่าสุดได้โดยไม่ต้องใส่ dependency
   const myClassIdsRef = useRef([]); 
@@ -36,20 +41,73 @@ export default function Home() {
       const user = userRef.current;
       if (classIds.length === 0 || !user) return;
 
-      // A. ดึงการบ้านทั้งหมด
       const { data: assData } = await supabase.from("assignments")
           .select("*, classes(subject_code, subject_name)")
           .in("class_id", classIds)
           .order("due_date", { ascending: true });
       
-      // B. ดึงงานที่ส่งแล้ว
       const { data: mySubs } = await supabase.from("submissions").select("assignment_id").eq("student_id", user.id);
       const submittedIds = mySubs ? mySubs.map(s => s.assignment_id) : [];
 
-      // C. กรองเอาเฉพาะงานที่ "ยังไม่ส่ง"
       const pendingAssignments = assData ? assData.filter(a => !submittedIds.includes(a.id)) : [];
-      
-      setAssignments(pendingAssignments.slice(0, 5)); // เอาแค่ 5 อันแรก
+      setAssignments(pendingAssignments.slice(0, 5)); 
+  }, []);
+
+  // 🌟 FUNCTION: ดึงข้อมูล Event ที่กด Join และผ่านการ Approve แล้ว
+  const fetchMyEvents = useCallback(async () => {
+      const user = userRef.current;
+      if (!user) return;
+
+      const currentTime = new Date().toISOString();
+
+      // ดึง event_id ที่ผ่านการอนุมัติแล้ว
+      const { data: participants } = await supabase
+          .from("event_participants")
+          .select("event_id")
+          .eq("user_id", user.id)
+          .eq("status", "approved");
+
+      if (!participants || participants.length === 0) {
+          setMyEvents([]);
+          return;
+      }
+
+      const eventIds = participants.map(p => p.event_id);
+
+      // ดึงรายละเอียด Event ที่ยังไม่หมดอายุ
+      const { data: eventsData } = await supabase
+          .from("events")
+          .select("*")
+          .in("id", eventIds)
+          .gte("event_date", currentTime)
+          .order("event_date", { ascending: true });
+
+      setMyEvents(eventsData || []);
+  }, []);
+
+  // 🌟 FUNCTION: ดึงข้อมูล ชมรม
+  const fetchMyClub = useCallback(async () => {
+      const user = userRef.current;
+      if (!user) return;
+
+      const { data: clubMember } = await supabase
+          .from("club_members")
+          .select("club_id, status")
+          .eq("user_id", user.id)
+          .single();
+
+      if (clubMember) {
+          setMyClubStatus(clubMember.status);
+          const { data: clubData } = await supabase
+              .from("clubs")
+              .select("*")
+              .eq("id", clubMember.club_id)
+              .single();
+          setMyClub(clubData);
+      } else {
+          setMyClub(null);
+          setMyClubStatus(null);
+      }
   }, []);
 
   // --- FETCH DATA INITIAL ---
@@ -66,7 +124,7 @@ export default function Home() {
       // 2. Get Enrollments & Class IDs
       const { data: myEnrolls } = await supabase.from("enrollments").select("class_id, grade").eq("user_id", user.id);
       const myClassIds = myEnrolls ? myEnrolls.map(e => e.class_id) : [];
-      myClassIdsRef.current = myClassIds; // เก็บใส่ Ref ไว้ใช้ใน Realtime
+      myClassIdsRef.current = myClassIds; 
 
       // 3. Fetch Stories
       const { data: annData } = await supabase
@@ -76,7 +134,7 @@ export default function Home() {
         .order("start_date", { ascending: false });
       setAnnouncements(annData || []);
 
-      // 4. Fetch Assignments (เรียกฟังก์ชันที่แยกไว้)
+      // 4. Fetch Assignments
       if (myClassIds.length > 0) {
         await fetchMyAssignments();
       }
@@ -89,37 +147,26 @@ export default function Home() {
       calculateGPAX(myEnrolls, myClassIds);
       if (myClassIds.length > 0) calculateNextClass(myClassIds);
 
+      // 🌟 7. ดึงข้อมูล Insider (Event & Club)
+      await fetchMyEvents();
+      await fetchMyClub();
+
       setLoading(false);
     };
 
     initData();
-  }, [fetchMyAssignments, router]);
+  }, [fetchMyAssignments, fetchMyEvents, fetchMyClub, router]);
 
-  // --- REALTIME LISTENER (Assignment Updates) ---
+  // --- REALTIME LISTENER ---
   useEffect(() => {
-    // ตั้งค่า Realtime
     const channel = supabase.channel('realtime-assignments-home')
-        .on(
-            'postgres_changes', 
-            { event: 'INSERT', schema: 'public', table: 'assignments' }, 
-            (payload) => {
-                // เช็คว่างานใหม่ที่เด้งมา เป็นของวิชาที่เราเรียนไหม?
-                if (myClassIdsRef.current.includes(payload.new.class_id)) {
-                    console.log("New Assignment Incoming! 📚 refreshing list...");
-                    // ถ้าใช่ ให้ดึงข้อมูลใหม่ทันที (เพื่อจะได้ชื่อวิชามาด้วย เพราะ Realtime ส่งมาแค่ ID)
-                    fetchMyAssignments();
-                }
-            }
-        )
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'assignments' }, (payload) => {
+                if (myClassIdsRef.current.includes(payload.new.class_id)) fetchMyAssignments();
+        })
         .subscribe();
-
-    return () => {
-        supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [fetchMyAssignments]);
 
-
-  // --- Helper Functions ---
   const calculateGPAX = async (enrolls, classIds) => {
     if (!enrolls || enrolls.length === 0) return setGpax("0.00");
     const { data: classes } = await supabase.from("classes").select("id, credit").in("id", classIds);
@@ -262,13 +309,98 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 4. UPCOMING ASSIGNMENTS */}
+        {/* 🌟 4. MY UPCOMING EVENTS (แนวนอนแบบหน้า Insider) */}
         <div>
           <div className="flex justify-between items-end mb-3 px-1">
-            <h3 className="text-sm font-bold text-gray-800">Upcoming</h3>
-            {/* ✅ ปุ่ม View All */}
+            <h3 className="text-sm font-bold text-gray-800">My Activities</h3>
+            <button onClick={() => router.push('/insider')} className="text-xs font-bold text-orange-600 hover:underline">
+               Explore More
+            </button>
+          </div>
+
+          <div className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 no-scrollbar">
+              {myEvents.length > 0 ? (
+                  myEvents.map(evt => (
+                      <div key={evt.id} onClick={() => router.push('/insider')} className="w-[260px] shrink-0 snap-start bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col cursor-pointer hover:shadow-md transition-all">
+                          <div className="h-28 bg-gray-200 relative w-full">
+                              {evt.image_url ? <img src={evt.image_url} className="w-full h-full object-cover"/> : <div className="w-full h-full bg-gradient-to-tr from-orange-200 to-red-300"></div>}
+                              <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 text-orange-600 shadow-sm">
+                                  <Award size={12}/> +{evt.activity_hours} Hrs
+                              </div>
+                          </div>
+                          <div className="p-4 flex-1 flex flex-col">
+                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">{evt.category || 'General'}</span>
+                              <h3 className="font-bold text-gray-800 text-sm leading-tight mb-2 line-clamp-1">{evt.title}</h3>
+                              <p className="text-xs text-gray-500 flex items-center gap-2 mt-auto"><Clock size={12}/> {new Date(evt.event_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                          </div>
+                      </div>
+                  ))
+              ) : (
+                  <div className="w-full bg-white p-6 rounded-2xl border border-dashed border-gray-200 text-center">
+                      <p className="text-sm text-gray-400 mb-2">No upcoming activities.</p>
+                      <button onClick={() => router.push('/insider')} className="text-xs font-bold text-orange-500 hover:underline">Find events to join</button>
+                  </div>
+              )}
+          </div>
+        </div>
+
+        {/* 🌟 5. MY CLUB (ระบบชมรม) */}
+        <div>
+          <h3 className="text-sm font-bold text-gray-800 mb-3 px-1">My Club</h3>
+          
+          {myClub ? (
+              <div className={`bg-white rounded-3xl p-5 border shadow-sm ${myClubStatus === 'pending' ? 'border-dashed border-gray-300 opacity-70' : 'border-purple-100'}`}>
+                  <div className="flex items-center gap-4 mb-4">
+                      <div className="w-14 h-14 bg-purple-50 rounded-full flex items-center justify-center overflow-hidden shrink-0">
+                          {myClub.logo_url ? <img src={myClub.logo_url} className="w-full h-full object-cover"/> : <Users className="text-purple-300" size={24}/>}
+                      </div>
+                      <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                              <h3 className="font-bold text-gray-900 text-lg leading-tight">{myClub.name}</h3>
+                              {myClubStatus === 'pending' && <span className="text-[9px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-md font-bold">Pending</span>}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">{myClub.member_count} Members</p>
+                      </div>
+                  </div>
+                  
+                  {myClubStatus === 'approved' ? (
+                      <div className="flex gap-2">
+                          {/* 🌟 ถ้าเป็นสมาชิกแล้ว กดเข้ากลุ่มแชทได้ */}
+                          {myClub.social_link && (
+                              <a href={myClub.social_link} target="_blank" className="flex-1 bg-blue-50 text-blue-600 py-2.5 rounded-xl text-xs font-bold flex justify-center items-center gap-2 hover:bg-blue-100 transition-colors">
+                                  <ExternalLink size={14}/> Group Chat
+                              </a>
+                          )}
+                          <button onClick={() => router.push('/club-board')} className="flex-1 bg-purple-600 text-white py-2.5 rounded-xl text-xs font-bold flex justify-center items-center gap-2 hover:bg-purple-700 transition-colors shadow-lg shadow-purple-200">
+    Club Board
+</button>
+                      </div>
+                  ) : (
+                      <div className="bg-gray-50 text-gray-500 py-2.5 rounded-xl text-xs font-bold text-center border border-gray-100">
+                          Waiting for admin to approve...
+                      </div>
+                  )}
+              </div>
+          ) : (
+              <div className="bg-white p-6 rounded-3xl border border-dashed border-gray-200 text-center">
+                  <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400">
+                      <Users size={20} />
+                  </div>
+                  <p className="text-sm font-bold text-gray-700 mb-1">No Club Joined Yet</p>
+                  <p className="text-xs text-gray-400 mb-4">Discover communities and make new friends.</p>
+                  <button onClick={() => router.push('/insider')} className="bg-gray-900 text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-gray-800 transition-colors">
+                      Explore Clubs
+                  </button>
+              </div>
+          )}
+        </div>
+
+        {/* 6. UPCOMING ASSIGNMENTS (ย้ายลงมาด้านล่าง) */}
+        <div>
+          <div className="flex justify-between items-end mb-3 px-1">
+            <h3 className="text-sm font-bold text-gray-800">Assignments</h3>
             <button onClick={() => router.push('/assignment')} className="text-xs font-bold text-blue-600 hover:underline">
-               View All / History
+               View All
             </button>
           </div>
 
@@ -328,7 +460,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* ID Card, GPA, QR, Lab Modals -> Same as before */}
       {showCardModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fade-in" onClick={() => setShowCardModal(false)}><div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl relative flex flex-col" onClick={e => e.stopPropagation()}><div className="bg-blue-600 h-32 relative p-5 flex justify-between items-start shrink-0"><div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm"><span className="text-white font-bold text-xs tracking-widest">KMUTT</span></div><div className="text-right text-white/90"><p className="text-[10px] font-bold tracking-widest uppercase mb-1">Student ID Card</p><p className="text-[10px] opacity-75">SIT Faculty</p></div></div><div className="px-6 pb-8 text-center -mt-16 relative z-10 flex flex-col items-center"><div className="w-28 h-28 rounded-full border-4 border-white bg-gray-200 shadow-lg overflow-hidden mb-3 shrink-0"><img src={profile?.avatar} className="w-full h-full object-cover" /></div><h2 className="text-2xl font-extrabold text-gray-800 leading-tight mb-1">{profile?.first_name}</h2><p className="text-gray-500 font-bold text-sm mb-6 bg-gray-100 px-3 py-1 rounded-full">{profile?.major} Student</p><div className="bg-white border-2 border-dashed border-gray-200 p-4 rounded-xl w-full flex flex-col items-center gap-2 shadow-sm"><p className="text-2xl font-mono font-bold text-blue-600 tracking-widest">{getStudentIdDisplay()}</p><div className="bg-white p-1"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${profile?.student_id}`} className="w-32 h-32 mix-blend-multiply opacity-90" /></div><p className="text-[9px] text-gray-400 uppercase tracking-wide mt-1">Scan to Verify</p></div></div></div></div>)}
       {showGPAModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowGPAModal(false)}><div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full animate-pop-in" onClick={e => e.stopPropagation()}><div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4 text-purple-600"><Award size={32} /></div><h3 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-1">Current GPAX</h3><p className="text-5xl font-extrabold text-gray-800 mb-6">{gpax}</p><button onClick={() => { setShowGPAModal(false); router.push('/profile'); }} className="w-full py-3 bg-gray-100 rounded-xl font-bold text-gray-600 hover:bg-gray-200">View Transcript</button></div></div>)}
       {showQRModal && (<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowQRModal(false)}><div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-xs w-full" onClick={e => e.stopPropagation()}><h3 className="text-xl font-bold text-gray-800 mb-4">Access Pass Key</h3><div className="bg-white p-2 border-2 border-dashed border-gray-300 rounded-xl mb-4"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=ACCESS:${profile?.student_id}:${new Date().toISOString()}`} className="w-full aspect-square" /></div><p className="text-xs text-gray-400">Scan this QR to enter Library or Lab rooms.</p></div></div>)}

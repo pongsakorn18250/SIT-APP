@@ -70,7 +70,6 @@ export default function SITInsider() {
   // 🌟 อัปเดต: ระบบ Join Club (เช็คว่ามีชมรมหรือยัง)
   const handleJoinClub = async (e, clubId) => {
       e.stopPropagation(); 
-      // เช็คว่ามีข้อมูลใน Object joinedClubs หรือไม่ (ถ้ามีแสดงว่ามีชมรมแล้ว)
       const hasJoinedAnyClub = Object.keys(joinedClubs).length > 0;
       
       if (hasJoinedAnyClub) {
@@ -80,8 +79,37 @@ export default function SITInsider() {
 
       const { error } = await supabase.from('club_members').insert({ club_id: clubId, user_id: user.id });
       if (!error) {
-          setJoinedClubs({ [clubId]: 'pending' }); // ใส่ข้อมูลชมรมใหม่เข้าไป
+          setJoinedClubs({ [clubId]: 'pending' });
           alert("ส่งคำขอเข้าชมรมแล้ว! รอประธาน/Admin อนุมัติ ⏳");
+          
+          // 🌟 ยิง Noti หา "ประธานชมรม" ของชมรมนี้
+          const { data: president } = await supabase
+              .from('club_members')
+              .select('user_id')
+              .eq('club_id', clubId)
+              .eq('role', 'president')
+              .single();
+              
+          if (president) {
+              // ถ้ามีประธาน ให้ส่ง Noti ไปหาประธาน
+              await supabase.from('notifications').insert({
+                  user_id: president.user_id,
+                  title: '👋 New Club Request',
+                  message: `Someone wants to join your club! Check your manage tab.`,
+                  type: 'club'
+              });
+          } else {
+             // ถ้ายังไม่มีประธาน ก็ส่งไปให้ OWNER (ตัวแอดมิน)
+             const { data: owner } = await supabase.from('profiles').select('id').eq('role', 'OWNER').single();
+             if(owner) {
+                 await supabase.from('notifications').insert({
+                    user_id: owner.id,
+                    title: '👋 New Club Request',
+                    message: `A student wants to join a club. Check Admin Console.`,
+                    type: 'club'
+                });
+             }
+          }
       }
   };
 

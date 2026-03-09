@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { 
     ArrowLeft, Building2, Calendar, Users, Save, Trash2, 
     Plus, Loader2, Image as ImageIcon, Briefcase, ListChecks, Check, X,
-    GripVertical, Edit3, RotateCcw, Upload, Link as LinkIcon
+    GripVertical, Edit3, RotateCcw, Upload, Link as LinkIcon, Crown
 } from "lucide-react";
 
 export default function AdminInsider() {
@@ -530,12 +530,36 @@ export default function AdminInsider() {
                       ) : (
                           clubActiveMembers.length === 0 ? <p className="p-6 text-center text-gray-400 text-sm">No members yet.</p> : 
                           clubActiveMembers.map(member => (
-                              <div key={member.id} className="p-3 m-2 border rounded-xl flex items-center gap-3 bg-white shadow-sm">
-                                  <img src={member.profiles?.avatar} className="w-10 h-10 rounded-full object-cover border bg-gray-100"/>
-                                  <div><p className="font-bold text-gray-800 text-sm">{member.profiles?.first_name}</p><p className="text-[10px] text-gray-400">{member.profiles?.student_id}</p></div>
-                                  <span className="ml-auto text-[10px] font-bold text-green-500 bg-green-50 px-2 py-1 rounded-full">Member</span>
-                              </div>
-                          ))
+    <div key={member.id} className="flex items-center justify-between p-3 border border-gray-100 rounded-xl hover:bg-gray-50">
+        <div className="flex items-center gap-3">
+            <img src={member.profiles?.avatar} className="w-10 h-10 rounded-full object-cover border bg-gray-100"/>
+            <div>
+                <p className="font-bold text-sm text-gray-800 flex items-center gap-1">
+                    {member.profiles?.first_name} 
+                    {member.role === 'president' && <span className="bg-yellow-100 text-yellow-600 text-[10px] px-1.5 py-0.5 rounded-md flex items-center gap-1"><Crown size={12}/> Pres</span>}
+                </p>
+                <p className="text-[10px] text-gray-400">{member.profiles?.student_id}</p>
+            </div>
+        </div>
+        <div className="flex items-center gap-2">
+            {/* 🌟 ปุ่มแต่งตั้งประธาน */}
+            {member.role !== 'president' && (
+                <button 
+                    onClick={async () => {
+                        if(!confirm(`Make ${member.profiles?.first_name} the President?`)) return;
+                        await supabase.from('club_members').update({ role: 'president' }).eq('id', member.id);
+                        alert("แต่งตั้งประธานเรียบร้อย! (กรุณาปิดหน้าต่างแล้วเปิดใหม่เพื่อรีเฟรช)");
+                    }} 
+                    className="p-2 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
+                    title="Make President"
+                >
+                    <Crown size={16}/>
+                </button>
+            )}
+            <span className="text-[10px] font-bold text-green-500 bg-green-50 px-2 py-1 rounded-full">Member</span>
+        </div>
+    </div>
+))
                       )}
                   </div>
               </div>
