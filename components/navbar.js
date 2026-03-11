@@ -3,7 +3,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Home, Calendar, Settings, User, Rss, ShieldAlert, LogOut,
-  ChevronDown, Edit3, X, CheckCircle, Crown, Megaphone
+  ChevronDown, Edit3, X, CheckCircle, Crown, Megaphone, Wrench // 🌟 เพิ่ม Wrench เข้ามา
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
@@ -82,11 +82,14 @@ export default function Navbar() {
     <>
       {/* ================= MOBILE BOTTOM NAV ================= */}
       <div className="md:hidden">
-        <nav className={`fixed bottom-0 w-full border-t flex justify-around py-3 pb-6 z-40 text-xs font-bold transition-colors backdrop-blur-xl ${theme.bgNav} ${theme.border} ${theme.textLight}`}>
+        <nav className={`fixed bottom-0 w-full border-t flex justify-around py-3 pb-6 z-40 text-xs font-bold transition-colors backdrop-blur-xl overflow-x-auto no-scrollbar gap-2 px-2 ${theme.bgNav} ${theme.border} ${theme.textLight}`}>
           {isAdmin ? (
             <>
               <NavItemMobile href="/admin" icon={ShieldAlert} label="Console" active={pathname === "/admin"} theme={theme} />
-              {/* 🌟 เพิ่ม Insider ตรงนี้ */}
+              
+              {/* 🌟 เพิ่มปุ่ม Tools สำหรับมือถือ */}
+              <NavItemMobile href="/admin/tools" icon={Wrench} label="Tools" active={pathname === "/admin/tools"} theme={theme} />
+              
               <NavItemMobile href="/admin/insider" icon={Rss} label="Insider" active={pathname === "/admin/insider"} theme={theme} />
               <NavItemMobile href="/admin/announcements" icon={Megaphone} label="News" active={pathname === "/admin/announcements"} theme={theme} />
               <NavItemMobile href="/admin/grading" icon={CheckCircle} label="Work" active={pathname === "/admin/grading"} theme={theme} />
@@ -132,9 +135,10 @@ export default function Navbar() {
               <div className="px-3 mb-2 text-xs font-bold opacity-50 uppercase tracking-wider">Management</div>
               <NavItemDesktop href="/admin" icon={ShieldAlert} label="Admin Console" active={pathname === "/admin"} theme={theme} />
               
-              {/* 🌟 เพิ่ม Insider แบบ Desktop ตรงนี้ */}
-              <NavItemDesktop href="/admin/insider" icon={Rss} label="SIT Insider" active={pathname === "/admin/insider"} theme={theme} />
+              {/* 🌟 เพิ่มปุ่ม Admin Tools ตรงนี้ */}
+              <NavItemDesktop href="/admin/tools" icon={Wrench} label="Admin Tools" active={pathname === "/admin/tools"} theme={theme} />
               
+              <NavItemDesktop href="/admin/insider" icon={Rss} label="SIT Insider" active={pathname === "/admin/insider"} theme={theme} />
               <NavItemDesktop href="/admin/announcements" icon={Megaphone} label="News / Stories" active={pathname === "/admin/announcements"} theme={theme} />
               <NavItemDesktop href="/admin/assignments" icon={Calendar} label="Assignments" active={pathname === "/admin/assignments"} theme={theme} />
               <NavItemDesktop href="/admin/grading" icon={CheckCircle} label="Work Console" active={pathname === "/admin/grading"} theme={theme} />
@@ -210,7 +214,7 @@ export default function Navbar() {
 
 function NavItemMobile({ href, icon: Icon, label, active, theme }) {
   return (
-    <Link href={href} className={`flex flex-col items-center gap-1 transition-all ${active ? theme.text : "hover:text-gray-600"}`}>
+    <Link href={href} className={`flex flex-col items-center gap-1 transition-all min-w-[60px] shrink-0 ${active ? theme.text : "hover:text-gray-600"}`}>
       <Icon size={24} className={active ? "scale-110" : ""} />
       <span>{label}</span>
     </Link>
