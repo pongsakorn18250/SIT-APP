@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase"; 
 import { useRouter } from "next/navigation";
+import PageSkeleton from "../../components/PageSkeleton";
 import { 
     Building2, Calendar, Users, MapPin, Clock, 
     Briefcase, ArrowRight, Loader2, Trophy, CheckCircle, PlusCircle, X
@@ -146,7 +147,7 @@ export default function SITInsider() {
   // 🌟 ตัวแปรเช็คว่า User คนนี้มีสังกัดชมรมใดชมรมหนึ่งหรือยัง
   const hasJoinedAnyClub = Object.keys(joinedClubs).length > 0;
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-600"/></div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 md:pb-10 pt-20 relative">

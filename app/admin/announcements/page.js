@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../../lib/supabase"; // ถอย 3 ชั้นเพื่อหา lib
 import { useRouter } from "next/navigation";
+import PageSkeleton from "../../../components/PageSkeleton"; // ถอย 3 ชั้นเพื่อหา components
 import { 
   ArrowLeft, Plus, Trash2, Eye, EyeOff, Image as ImageIcon, 
   Save, Loader2, Megaphone 
@@ -83,7 +84,7 @@ export default function AdminAnnouncements() {
     fetchStories();
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin"/></div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 flex justify-center pb-20">

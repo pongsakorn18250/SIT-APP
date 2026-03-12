@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../../lib/supabase"; 
 import { useRouter } from "next/navigation";
+import PageSkeleton from "../../../components/PageSkeleton";
 import { ArrowLeft, Save, Loader2, BookOpen, Trash2, Calendar, Star } from "lucide-react";
 
 export default function AdminAssignments() {
@@ -93,7 +94,7 @@ export default function AdminAssignments() {
       fetchAssignments();
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin"/></div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 flex justify-center pb-20">

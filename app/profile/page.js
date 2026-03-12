@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
+import PageSkeleton from "../../components/PageSkeleton";
 import { 
   Trophy, BookOpen, X, Edit3, CheckCircle, Crown, 
   ChevronRight, Star, FileText, Calendar, Filter
@@ -196,7 +197,7 @@ export default function ProfilePage() {
     }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 md:pb-10">

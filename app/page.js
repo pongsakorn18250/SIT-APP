@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
+import PageSkeleton from "../components/PageSkeleton";
 import {
   MapPin, QrCode, CreditCard, Award, Zap, ChevronRight,
   BookOpen, Monitor, X, Loader2, ExternalLink, Clock, Calendar, Users
@@ -218,7 +219,7 @@ export default function Home() {
 
   const getStudentIdDisplay = () => profile?.student_id || "xxxxxxxxxxx";
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-600" /></div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 md:pb-10 pt-20">

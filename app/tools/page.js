@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
+import PageSkeleton from "../../components/PageSkeleton";
 import { 
   ArrowLeft, Wrench, Package, Key, Users, Monitor, 
   FileText, Printer, CheckCircle, Clock, X, 
@@ -118,7 +119,7 @@ export default function ToolsPage() {
   const handleResolveLF = async (postId) => { if(!confirm("คุณเจอของสิ่งนี้แล้วใช่หรือไม่? (โพสต์จะถูกซ่อน)")) return; await supabase.from('lost_and_found').update({ status: 'resolved' }).eq('id', postId); loadToolData('lostfound'); };
   const handleCreateLFComment = async (e, postId) => { e.preventDefault(); const content = lfCommentInputs[postId]; if (!content?.trim()) return; await supabase.from('lost_and_found_comments').insert({ post_id: postId, user_id: user.id, content }); setLfCommentInputs({ ...lfCommentInputs, [postId]: "" }); loadToolData('lostfound'); };
 
-  if (loading && !activeTool) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-600"/></div>;
+  if (loading && !activeTool) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 md:pb-10 pt-20">

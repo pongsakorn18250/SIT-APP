@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
+import PageSkeleton from "../../../components/PageSkeleton";
 import { 
     ArrowLeft, Building2, Calendar, Users, Save, Trash2, 
     Plus, Loader2, Image as ImageIcon, Briefcase, ListChecks, Check, X,
@@ -227,7 +228,7 @@ export default function AdminInsider() {
       fetchData();
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600"/></div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6 pb-24 flex justify-center">

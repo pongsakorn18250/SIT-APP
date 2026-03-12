@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
+import PageSkeleton from "../../../components/PageSkeleton";
 import { ArrowLeft, FileText, Download, Loader2, Folder, ChevronRight, BookOpen, User } from "lucide-react";
 
 export default function AdminGrading() {
@@ -120,7 +121,7 @@ export default function AdminGrading() {
       }
   };
 
-  if (loading && !selectedAssignment) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600"/></div>;
+  if (loading && !selectedAssignment) return <PageSkeleton />;
 
   // กรองงานตามวิชาที่เลือก (สำหรับ Step 1)
   const filteredAssignments = assignments.filter(a => a.classes?.id === selectedClass?.id);

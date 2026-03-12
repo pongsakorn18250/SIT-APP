@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
+import PageSkeleton from "../../components/PageSkeleton";
 import { ArrowLeft, CheckCircle, Clock, FileText, Loader2, AlertCircle } from "lucide-react";
 
 export default function StudentAssignments() {
@@ -51,7 +52,7 @@ export default function StudentAssignments() {
   // Helper หา Submission ของงานนั้นๆ
   const getSubmission = (assId) => submissions.find(s => s.assignment_id === assId);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600"/></div>;
+  if (loading && !selectedAssignment) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 pb-24">

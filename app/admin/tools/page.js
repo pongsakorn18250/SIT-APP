@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
+import PageSkeleton from "../../../components/PageSkeleton";
 import { 
   FileText, Wrench, Package, Key, Users, Monitor, 
   CheckCircle, XCircle, Clock, Send, Plus, Trash2, Loader2, ArrowLeft,
@@ -173,7 +174,7 @@ export default function AdminToolsPage() {
       await sendNoti(userId, '💻 Lab Force Check-out', `คุณถูกแอดมินบังคับ Check-out ออกจากห้อง ${roomName} เนื่องจากลืมกดออก`, 'alert'); fetchAdminData();
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-600 w-10 h-10"/></div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">

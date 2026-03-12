@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase"; 
 import { useRouter } from "next/navigation";
+import PageSkeleton from "../../components/PageSkeleton";
 import { 
   Calendar, MapPin, Clock, Plus, BookOpen, AlertCircle, Loader2, RefreshCw 
 } from "lucide-react";
@@ -61,12 +62,7 @@ export default function SchedulePage() {
     };
   };
 
-  if (loading) return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 gap-3">
-          <Loader2 className="animate-spin text-blue-600" size={32}/>
-          <p className="text-xs font-bold text-gray-400 animate-pulse">Loading Schedule...</p>
-      </div>
-  );
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-32 md:pb-10 pt-28 md:pt-10">

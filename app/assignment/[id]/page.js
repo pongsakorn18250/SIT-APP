@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter, useParams } from "next/navigation"; // ใช้ useParams เพื่อดึง id การบ้าน
+import PageSkeleton from "../../../components/PageSkeleton";
 import { ArrowLeft, Clock, Upload, Link as LinkIcon, FileText, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
 
 export default function AssignmentDetail() {
@@ -99,7 +100,7 @@ export default function AssignmentDetail() {
     setIsSubmitting(false);
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600"/></div>;
+  if (loading && !selectedAssignment) return <PageSkeleton />;
 
   const isLate = new Date() > new Date(assignment.due_date);
 
