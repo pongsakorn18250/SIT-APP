@@ -100,7 +100,7 @@ export default function AssignmentDetail() {
     setIsSubmitting(false);
   };
 
-  if (loading && !selectedAssignment) return <PageSkeleton />;
+  if (loading) return <PageSkeleton />;
 
   const isLate = new Date() > new Date(assignment.due_date);
 

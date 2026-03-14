@@ -52,7 +52,7 @@ export default function StudentAssignments() {
   // Helper หา Submission ของงานนั้นๆ
   const getSubmission = (assId) => submissions.find(s => s.assignment_id === assId);
 
-  if (loading && !selectedAssignment) return <PageSkeleton />;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 pb-24">
