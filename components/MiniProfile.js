@@ -81,7 +81,7 @@ export default function MiniProfile() {
   else if (profile?.major === "CS") themeButton = "bg-indigo-600 text-white";
   else if (profile?.major === "DSI") themeButton = "bg-emerald-600 text-white";
 
-  const isAuthPage = ["/login", "/register", "/select-major", "/select-character"].includes(pathname);
+  const isAuthPage = ["/login", "/register", "/select-major", "/select-character", "/showcase"].includes(pathname);
   if (isAuthPage) return null;
 
   if (!profile) return null;

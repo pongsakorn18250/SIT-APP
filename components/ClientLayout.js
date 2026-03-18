@@ -7,7 +7,7 @@ export default function ClientLayout({ children }) {
   const pathname = usePathname();
   
   // รายชื่อหน้าที่ "ไม่ต้องมี Navbar" และ "ไม่ต้องเว้นที่"
-  const isAuthPage = ["/login", "/register", "/select-major", "/select-character"].includes(pathname);
+  const isAuthPage = ["/login", "/register", "/select-major", "/select-character" , "/showcase"].includes(pathname);
 
   return (
     <>

@@ -75,7 +75,7 @@ export default function Navbar() {
   };
   const theme = getTheme();
 
-  const hiddenPaths = ["/login", "/register", "/select-character", "/select-major", "/select-role"];
+  const hiddenPaths = ["/login", "/register", "/select-character", "/select-major", "/select-role", "/showcase"];
   if (hiddenPaths.includes(pathname)) return null;
 
   return (

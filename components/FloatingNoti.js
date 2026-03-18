@@ -194,7 +194,7 @@ export default function FloatingNoti() {
       }
   };
 
-  if (["/login", "/register", "/select-character", "/select-major", "/select-role", "/admin", "/admin/assignments", "/admin/grading"].includes(pathname)) return null;
+  if (["/login", "/register", "/select-character", "/select-major", "/select-role", "/admin", "/admin/assignments", "/admin/grading" , "/showcase"].includes(pathname)) return null;
 
   return (
     <>
