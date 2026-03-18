@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
+import toast from 'react-hot-toast';
 import { 
   ShieldAlert, Trash2, Book, Trophy, Search, Save, 
   AlertTriangle, ArrowLeft, Users, User, X, Edit3, Crown, Calendar, Loader2,
@@ -198,7 +199,13 @@ export default function AdminPage() {
     const { error } = await supabase.from("profiles").update({
         first_name: editForm.first_name, major: editForm.major, year: editForm.year, role: editForm.role 
     }).eq("id", viewingUser.id);
-    if (!error) { alert("Updated! ✅"); setUsers(users.map(u => u.id === viewingUser.id ? { ...u, ...editForm } : u)); setViewingUser(null); }
+    
+    // เปลี่ยน alert เป็น toast.success ตรงนี้ 👇
+    if (!error) { 
+        toast.success("Updated! ✅"); 
+        setUsers(users.map(u => u.id === viewingUser.id ? { ...u, ...editForm } : u)); 
+        setViewingUser(null); 
+    }
   };
 
   const handleDeleteUser = async () => {
@@ -215,19 +222,24 @@ export default function AdminPage() {
   const handleDeleteEnrollment = async (enrollmentId) => {
       if(!confirm("Remove course?")) return;
       const { error } = await supabase.from("enrollments").delete().eq("id", enrollmentId);
-      if(!error) { alert("Removed!"); handleViewUser(viewingUser); } 
+      
+      // 👇 เปลี่ยน alert เป็น toast.success ตรงนี้ครับ
+      if(!error) { 
+          toast.success("Removed!"); 
+          handleViewUser(viewingUser); 
+      } 
   };
 
   // ✅ ACTION: ADD CLASS (FIXED: Time Validation)
   const handleAddClass = async () => {
       // 1. Validation Logic
       if(!planForm.subject_code || !planForm.subject_name) {
-          return alert("Please fill Subject Code and Name");
+          return toast.error("Please fill Subject Code and Name");
       }
       if(!planForm.start_time || !planForm.end_time) {
-          return alert("Please fill Start Time and End Time");
+          return toast.error("Please fill Start Time and End Time");
       }
-
+      // ... โค้ดส่วนอื่นๆ ด้านล่างปล่อยไว้เหมือนเดิมครับ
       setIsSubmitting(true);
       
       const { error } = await supabase.from("classes").insert({
@@ -244,7 +256,7 @@ export default function AdminPage() {
       });
 
       if(!error) { 
-          alert("Class Opened! 🎉"); 
+          toast.success("Class Opened! 🎉"); 
           // Reset only text fields, keep basic settings
           setPlanForm({ 
               ...planForm, 
@@ -253,7 +265,7 @@ export default function AdminPage() {
           }); 
           fetchClasses(); 
       } else { 
-          alert("Error: " + error.message); 
+          toast.error("Error: " + error.message); 
       }
       setIsSubmitting(false);
   };
@@ -266,7 +278,9 @@ export default function AdminPage() {
 
   // ✅ ACTION: SAVE GRADE (FIXED: With Notification)
   const handleSaveGrade = async () => {
-    if (!selectedUserId || !selectedEnrollmentId) return alert("Select student & class");
+    // 🔴 จุดที่ 1: แจ้งเตือนเมื่อลืมเลือกข้อมูล
+    if (!selectedUserId || !selectedEnrollmentId) return toast.error("Select student & class");
+    
     setIsSubmitting(true);
     const { error } = await supabase.from("enrollments").update({ grade: grade, status: 'completed' }).eq("id", selectedEnrollmentId);
     
@@ -284,17 +298,19 @@ export default function AdminPage() {
             is_read: false
         });
 
-        alert("Grade Updated & Notified! ✅"); 
+        // 🟢 จุดที่ 2: บันทึกและแจ้งเตือนสำเร็จ
+        toast.success("Grade Updated & Notified! ✅"); 
         handleSelectStudent(selectedUserId); 
     } else {
-        alert("Error: " + error.message);
+        // 🔴 จุดที่ 3: เกิดข้อผิดพลาดจากฐานข้อมูล
+        toast.error("Error: " + error.message);
     }
     setIsSubmitting(false);
   };
 
   // ✅ ACTION: ADD ACTIVITY (FIXED: With Notification)
   const handleAddActivity = async () => { 
-      if (!selectedUserId || !actName) return alert("Fill data");
+      if (!selectedUserId || !actName) return toast.error("Fill data");
       setIsSubmitting(true);
       const { error } = await supabase.from("activities").insert({ 
           user_id: selectedUserId, name: actName, hours: actHours, category: actCategory, 
@@ -310,10 +326,10 @@ export default function AdminPage() {
               is_read: false
           });
 
-          alert("Activity Added & Notified! ✅"); 
+          toast.success("Activity Added & Notified! ✅"); 
           setActName(""); setActDesc(""); 
       } else {
-          alert("Error: " + error.message);
+          toast.error("Error: " + error.message);
       }
       setIsSubmitting(false);
   };

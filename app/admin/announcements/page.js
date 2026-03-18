@@ -7,6 +7,7 @@ import {
   ArrowLeft, Plus, Trash2, Eye, EyeOff, Image as ImageIcon, 
   Save, Loader2, Megaphone 
 } from "lucide-react";
+import toast from "react-hot-toast";
 
 export default function AdminAnnouncements() {
   const router = useRouter();
@@ -50,7 +51,7 @@ export default function AdminAnnouncements() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.title) return alert("Please enter a title");
+    if (!form.title) return toast.error("Please enter a title");
     
     setIsSubmitting(true);
     // ใช้รูป Default ถ้าไม่ได้ใส่
@@ -64,11 +65,11 @@ export default function AdminAnnouncements() {
     });
 
     if (!error) {
-        alert("Posted! 🎉");
+        toast.success("Posted! 🎉");
         setForm({ title: "", image_url: "", link_url: "", is_active: true }); // Reset Form
         fetchStories(); // Refresh List
     } else {
-        alert(error.message);
+        toast.error("Error: " + error.message);
     }
     setIsSubmitting(false);
   };

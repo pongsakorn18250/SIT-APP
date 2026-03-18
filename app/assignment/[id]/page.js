@@ -4,7 +4,7 @@ import { supabase } from "../../../lib/supabase";
 import { useRouter, useParams } from "next/navigation"; // ใช้ useParams เพื่อดึง id การบ้าน
 import PageSkeleton from "../../../components/PageSkeleton";
 import { ArrowLeft, Clock, Upload, Link as LinkIcon, FileText, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
-
+import toast from "react-hot-toast";
 export default function AssignmentDetail() {
   const router = useRouter();
   const { id } = useParams(); // ดึง ID การบ้านจาก URL
@@ -36,7 +36,7 @@ export default function AssignmentDetail() {
       .single();
     
     if (error) {
-        alert("Assignment not found!");
+        toast.error("Assignment not found!");
         router.push("/");
         return;
     }
@@ -55,7 +55,7 @@ export default function AssignmentDetail() {
   };
 
   const handleUpload = async () => {
-    if (!file && !linkUrl) return alert("Please attach a file or link.");
+    if (!file && !linkUrl) return toast.error("Please attach a file or link.");
     setIsSubmitting(true);
 
     let uploadedFileUrl = "";
@@ -68,7 +68,7 @@ export default function AssignmentDetail() {
             .upload(fileName, file);
         
         if (error) {
-            alert("Upload failed: " + error.message);
+            toast.error("Upload failed: " + error.message);
             setIsSubmitting(false);
             return;
         }
@@ -92,10 +92,10 @@ export default function AssignmentDetail() {
     });
 
     if (!subError) {
-        alert(isLate ? "Submitted Late! 😅" : "Turned in successfully! 🎉");
+        toast.success(isLate ? "Submitted Late! 😅" : "Turned in successfully! 🎉");
         fetchData(); // โหลดหน้าใหม่เพื่อโชว์สถานะ
     } else {
-        alert(subError.message);
+        toast.error(subError.message);
     }
     setIsSubmitting(false);
   };

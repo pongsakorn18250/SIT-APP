@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import { CheckCircle, Loader2 } from "lucide-react";
+import toast from "react-hot-toast";
 
 const AVATAR_SEEDS = [
   "Felix", "Aneka", "Zoe", "Jack", "Abby", "Liam", 
@@ -34,7 +35,7 @@ export default function SelectCharacterPage() {
     const { error } = await supabase.from("profiles").update({ avatar: selectedAvatar }).eq("id", user.id);
 
     if (error) {
-        alert(error.message);
+        toast.error(error.message);
         setLoading(false);
     } else {
         // 🕵️‍♂️ CHECK ROLE AGAIN (เพื่อส่งไปห้องลับ)

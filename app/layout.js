@@ -2,6 +2,7 @@ import "./globals.css";
 import ClientLayout from "../components/ClientLayout"; // 👈 เรียกตัวใหม่มาใช้
 import FloatingNoti from"../components/FloatingNoti"; 
 import MiniProfile from "../components/MiniProfile"; 
+import { Toaster } from 'react-hot-toast';
 
 export default function RootLayout({ children }) {
   return (
@@ -16,6 +17,7 @@ export default function RootLayout({ children }) {
           
         {/* ย้าย MiniProfile มาไว้ที่นี่ เพื่อให้มันแยกการทำงานกับ Navbar และไม่โดนเงื่อนไขซ่อนบนหน้า Profile */}
         <FloatingNoti />
+        <Toaster position="top-right" reverseOrder={false} />
         </ClientLayout>
 
       </body>

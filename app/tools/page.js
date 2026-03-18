@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import PageSkeleton from "../../components/PageSkeleton";
+import toast from "react-hot-toast";
 import { 
   ArrowLeft, Wrench, Package, Key, Users, Monitor, 
   FileText, Printer, CheckCircle, Clock, X, 
@@ -97,28 +98,27 @@ export default function ToolsPage() {
   };
 
   const checkRoomSchedule = async () => {
-      if (!bookingForm.room_id || !bookingForm.booking_date) return alert("กรุณาเลือกห้องและวันที่ เพื่อเช็คคิวครับ");
+      if (!bookingForm.room_id || !bookingForm.booking_date) return toast.error("กรุณาเลือกห้องและวันที่ เพื่อเช็คคิวครับ");
       const { data } = await supabase.from('bookings').select('start_time, end_time, status').eq('room_id', bookingForm.room_id).eq('booking_date', bookingForm.booking_date).in('status', ['pending', 'approved']).order('start_time');
       setRoomScheduleModal({ isOpen: true, roomId: bookingForm.room_id, date: bookingForm.booking_date, schedules: data || [] });
   };
   const submitBooking = async (e) => {
-      e.preventDefault(); if (!bookingForm.room_id) return alert("กรุณาเลือกห้องก่อนครับ!");
+      e.preventDefault(); if (!bookingForm.room_id) return toast.error("กรุณาเลือกห้องก่อนครับ!");
       const { data: existing } = await supabase.from('bookings').select('*').eq('room_id', bookingForm.room_id).eq('booking_date', bookingForm.booking_date).in('status', ['pending', 'approved']);
       const isOverlap = existing.some(b => (bookingForm.start_time < b.end_time && bookingForm.end_time > b.start_time));
-      if (isOverlap) return alert("❌ เวลาดังกล่าวมีการจองไปแล้ว กรุณาเลือกเวลาใหม่ หรือเช็คคิวห้องก่อนครับ");
+      if (isOverlap) return toast.error("❌ เวลาดังกล่าวมีการจองไปแล้ว กรุณาเลือกเวลาใหม่ หรือเช็คคิวห้องก่อนครับ");
       await supabase.from('bookings').insert({ ...bookingForm, user_id: user.id, status: 'pending' });
-      setBookingForm({ room_id: "", booking_date: "", start_time: "", end_time: "", purpose: "" }); alert("จองห้องเรียบร้อย รอ Admin อนุมัติ"); loadToolData('booking');
+      setBookingForm({ room_id: "", booking_date: "", start_time: "", end_time: "", purpose: "" }); toast.success("จองห้องเรียบร้อย รอ Admin อนุมัติ"); loadToolData('booking');
   };
-  const submitSoftwareRequest = async (e) => { e.preventDefault(); await supabase.from('software_requests').insert({ user_id: user.id, software_id: swRequestModal.softwareId, university_email: swRequestModal.email, request_reason: swRequestModal.reason }); setSwRequestModal({ isOpen: false, softwareId: null, softwareName: "", email: "", reason: "" }); alert(`ส่งคำขอ ${swRequestModal.softwareName} เรียบร้อย!`); loadToolData('software'); };
-  const handleRedeem = async (req) => { const inputCode = redeemInputs[req.id]; if (!inputCode) return alert("กรุณากรอกโค้ด"); if (inputCode.trim() !== req.license_key) return alert("❌ โค้ดไม่ถูกต้อง (Invalid Code)"); await supabase.from('software_requests').update({ status: 'redeemed' }).eq('id', req.id); await supabase.from('notifications').insert({ user_id: user.id, title: '🎉 Software Redeemed!', message: `เปิดใช้งาน ${req.software_licenses?.name} แล้ว`, type: 'info' }); alert("✅ Redeem โค้ดสำเร็จ!"); loadToolData('software'); };
-  const submitMaintenance = async (e) => { e.preventDefault(); await supabase.from('maintenance').insert({ ...maintForm, user_id: user.id }); setMaintForm({ room: "", title: "", description: "" }); alert("แจ้งซ่อมเรียบร้อย!"); loadToolData('maintenance'); };
-  const submitBorrow = async (e) => { e.preventDefault(); if (!borrowForm.equipment_id) return alert("กรุณาเลือกอุปกรณ์"); await supabase.from('equipment_borrows').insert({ ...borrowForm, user_id: user.id }); setBorrowForm({ equipment_id: "", borrow_date: "", return_date: "" }); alert("ส่งคำขอยืมเรียบร้อย รอ Admin อนุมัติ"); loadToolData('equipment'); };
-  const toggleLabCheckIn = async (roomId, action) => { if (action === 'checkin') { if(myLabUsage) return alert("คุณใช้งานห้องอื่นอยู่ ต้อง Check-out ก่อน"); await supabase.from('lab_usage').insert({ room_id: roomId, user_id: user.id, status: 'active' }); } else { await supabase.from('lab_usage').update({ status: 'completed', check_out_time: new Date().toISOString() }).eq('id', myLabUsage.id); } loadToolData('lab'); };
-  const submitDocRequest = async (e) => { e.preventDefault(); await supabase.from('document_requests').insert({ ...docForm, user_id: user.id }); setDocForm({ doc_type: "Transcript", reason: "" }); alert("ส่งคำร้องเรียบร้อย!"); loadToolData('document'); };
-  const submitLostFound = async (e) => { e.preventDefault(); await supabase.from('lost_and_found').insert({ ...lostForm, user_id: user.id }); setLostForm({ post_type: "lost", item_name: "", location: "", description: "" }); alert("โพสต์ประกาศเรียบร้อย!"); loadToolData('lostfound'); };
+  const submitSoftwareRequest = async (e) => { e.preventDefault(); await supabase.from('software_requests').insert({ user_id: user.id, software_id: swRequestModal.softwareId, university_email: swRequestModal.email, request_reason: swRequestModal.reason }); setSwRequestModal({ isOpen: false, softwareId: null, softwareName: "", email: "", reason: "" }); toast.success(`ส่งคำขอ ${swRequestModal.softwareName} เรียบร้อย!`); loadToolData('software'); };
+  const handleRedeem = async (req) => { const inputCode = redeemInputs[req.id]; if (!inputCode) return toast.error("กรุณากรอกโค้ด"); if (inputCode.trim() !== req.license_key) return toast.error("❌ โค้ดไม่ถูกต้อง (Invalid Code)"); await supabase.from('software_requests').update({ status: 'redeemed' }).eq('id', req.id); await supabase.from('notifications').insert({ user_id: user.id, title: '🎉 Software Redeemed!', message: `เปิดใช้งาน ${req.software_licenses?.name} แล้ว`, type: 'info' }); toast.success("✅ Redeem โค้ดสำเร็จ!"); loadToolData('software'); };
+  const submitMaintenance = async (e) => { e.preventDefault(); await supabase.from('maintenance').insert({ ...maintForm, user_id: user.id }); setMaintForm({ room: "", title: "", description: "" }); toast.success("แจ้งซ่อมเรียบร้อย!"); loadToolData('maintenance'); };
+  const submitBorrow = async (e) => { e.preventDefault(); if (!borrowForm.equipment_id) return toast.error("กรุณาเลือกอุปกรณ์"); await supabase.from('equipment_borrows').insert({ ...borrowForm, user_id: user.id }); setBorrowForm({ equipment_id: "", borrow_date: "", return_date: "" }); toast.success("ส่งคำขอยืมเรียบร้อย รอ Admin อนุมัติ"); loadToolData('equipment'); };
+  const toggleLabCheckIn = async (roomId, action) => { if (action === 'checkin') { if(myLabUsage) return toast.error("คุณใช้งานห้องอื่นอยู่ ต้อง Check-out ก่อน"); await supabase.from('lab_usage').insert({ room_id: roomId, user_id: user.id, status: 'active' }); } else { await supabase.from('lab_usage').update({ status: 'completed', check_out_time: new Date().toISOString() }).eq('id', myLabUsage.id); } loadToolData('lab'); };
+  const submitDocRequest = async (e) => { e.preventDefault(); await supabase.from('document_requests').insert({ ...docForm, user_id: user.id }); setDocForm({ doc_type: "Transcript", reason: "" }); toast.success("ส่งคำร้องเรียบร้อย!"); loadToolData('document'); };
+  const submitLostFound = async (e) => { e.preventDefault(); await supabase.from('lost_and_found').insert({ ...lostForm, user_id: user.id }); setLostForm({ post_type: "lost", item_name: "", location: "", description: "" }); toast.success("โพสต์ประกาศเรียบร้อย!"); loadToolData('lostfound'); };
   const handleResolveLF = async (postId) => { if(!confirm("คุณเจอของสิ่งนี้แล้วใช่หรือไม่? (โพสต์จะถูกซ่อน)")) return; await supabase.from('lost_and_found').update({ status: 'resolved' }).eq('id', postId); loadToolData('lostfound'); };
   const handleCreateLFComment = async (e, postId) => { e.preventDefault(); const content = lfCommentInputs[postId]; if (!content?.trim()) return; await supabase.from('lost_and_found_comments').insert({ post_id: postId, user_id: user.id, content }); setLfCommentInputs({ ...lfCommentInputs, [postId]: "" }); loadToolData('lostfound'); };
-
   if (loading && !activeTool) return <PageSkeleton />;
 
   return (

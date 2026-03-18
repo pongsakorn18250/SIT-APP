@@ -4,6 +4,8 @@ import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
 import PageSkeleton from "../../../components/PageSkeleton";
 import { ArrowLeft, Save, Loader2, BookOpen, Trash2, Calendar, Star } from "lucide-react";
+import toast from "react-hot-toast";
+
 
 export default function AdminAssignments() {
   const router = useRouter();
@@ -43,7 +45,7 @@ export default function AdminAssignments() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.class_id || !form.title || !form.due_date) return alert("Please fill all required fields");
+    if (!form.class_id || !form.title || !form.due_date) return toast.error("Please fill all required fields");
 
     setIsSubmitting(true);
     
@@ -79,11 +81,11 @@ export default function AdminAssignments() {
         }
         // -----------------------------
 
-        alert("Assignment Posted & Students Notified! 🔔");
+        toast.success("Assignment Posted & Students Notified! 🔔");
         setForm({ ...form, title: "", description: "", max_score: "10" }); 
         fetchAssignments();
     } else {
-        alert(error?.message || "Error posting assignment");
+        toast.error(error?.message || "Error posting assignment");
     }
     setIsSubmitting(false);
   };

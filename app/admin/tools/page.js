@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
 import PageSkeleton from "../../../components/PageSkeleton";
+import toast from "react-hot-toast";
 import { 
   FileText, Wrench, Package, Key, Users, Monitor, 
   CheckCircle, XCircle, Clock, Send, Plus, Trash2, Loader2, ArrowLeft,
@@ -114,7 +115,7 @@ export default function AdminToolsPage() {
 
   const addEquipment = async (e) => {
       e.preventDefault(); await supabase.from('equipments').insert(newEq);
-      setNewEq({ name: "", description: "", total_quantity: 1, available_quantity: 1, image_url: "" }); alert("เพิ่มอุปกรณ์สำเร็จ!"); fetchAdminData();
+      setNewEq({ name: "", description: "", total_quantity: 1, available_quantity: 1, image_url: "" }); toast.success("เพิ่มอุปกรณ์สำเร็จ!"); fetchAdminData();
   };
 
   const saveEditEquipment = async () => {
@@ -150,7 +151,7 @@ export default function AdminToolsPage() {
 
   const addSoftware = async (e) => {
       e.preventDefault(); await supabase.from('software_licenses').insert(newSw);
-      setNewSw({ name: "", description: "", icon_url: "", validity_period: "ตลอดการเป็นนักศึกษา" }); alert("เพิ่ม Software สำเร็จ!"); fetchAdminData();
+      setNewSw({ name: "", description: "", icon_url: "", validity_period: "ตลอดการเป็นนักศึกษา" }); toast.success("เพิ่ม Software สำเร็จ!"); fetchAdminData();
   };
 
   const saveEditSoftware = async () => {

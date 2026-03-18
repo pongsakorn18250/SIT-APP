@@ -103,7 +103,7 @@ export default function AdminGrading() {
           });
           
       } else {
-          alert("Error saving score");
+          toast.error("Error saving score");
       }
   };
   

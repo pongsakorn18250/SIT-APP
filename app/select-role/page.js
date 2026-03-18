@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import { Crown, ShieldAlert, BookOpen, Calendar, Lock, ArrowRight } from "lucide-react";
+import toast from "react-hot-toast";
 
 export default function SelectRolePage() {
   const router = useRouter();
@@ -43,14 +44,14 @@ export default function SelectRolePage() {
     if (!error) {
         router.push("/admin"); // เสร็จแล้วไป Admin Console
     } else {
-        alert("Error: " + error.message);
+        toast.error("Error: " + error.message);
     }
     setLoading(false);
   };
 
   const verifyCode = () => {
       if (accessCode === "SIT2026") setIsVerified(true);
-      else { alert("Access Denied."); setAccessCode(""); }
+      else { toast.error("Access Denied."); setAccessCode(""); }
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400 font-bold">Checking Clearance...</div>;

@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import { 
   BookOpen, Clock, MapPin, User as UserIcon, 
   CheckCircle, AlertCircle, Loader2, Filter 
@@ -77,7 +78,7 @@ export default function RegisterPage() {
     const targetYear = Number(classItem.target_year || 0);
 
     if (targetYear !== 0 && targetYear !== myYear) {
-       return alert(`วิชานี้เปิดสำหรับนักศึกษาชั้นปีที่ ${targetYear} เท่านั้น`);
+       return toast.error(`วิชานี้เปิดสำหรับนักศึกษาชั้นปีที่ ${targetYear} เท่านั้น`);
     }
 
     if (!confirm(`Confirm enrollment for ${classItem.subject_code}?`)) return;
@@ -93,9 +94,9 @@ export default function RegisterPage() {
     });
 
     if (error) {
-      alert("Failed to enroll: " + error.message);
+      toast.error("Failed to enroll: " + error.message);
     } else {
-      alert("Enrollment Successful! 🎉");
+      toast.success("Enrollment Successful! 🎉");
       setEnrolledClassIds([...enrolledClassIds, classItem.id]); // Update state ทันที
       
       // Auto Notification

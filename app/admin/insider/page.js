@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
 import PageSkeleton from "../../../components/PageSkeleton";
+import toast from "react-hot-toast";
 import { 
     ArrowLeft, Building2, Calendar, Users, Save, Trash2, 
     Plus, Loader2, Image as ImageIcon, Briefcase, ListChecks, Check, X,
@@ -88,7 +89,7 @@ export default function AdminInsider() {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
       const { data, error } = await supabase.storage.from('insider').upload(fileName, file);
-      if (error) { alert("Upload failed: " + error.message); return null; }
+      if (error) { toast.error("Upload failed: " + error.message); return null; }
       const { data: publicUrlData } = supabase.storage.from('insider').getPublicUrl(fileName);
       return publicUrlData.publicUrl;
   };
@@ -549,7 +550,7 @@ export default function AdminInsider() {
                     onClick={async () => {
                         if(!confirm(`Make ${member.profiles?.first_name} the President?`)) return;
                         await supabase.from('club_members').update({ role: 'president' }).eq('id', member.id);
-                        alert("แต่งตั้งประธานเรียบร้อย! (กรุณาปิดหน้าต่างแล้วเปิดใหม่เพื่อรีเฟรช)");
+                        toast.success("แต่งตั้งประธานเรียบร้อย! (กรุณาปิดหน้าต่างแล้วเปิดใหม่เพื่อรีเฟรช)");
                     }} 
                     className="p-2 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
                     title="Make President"

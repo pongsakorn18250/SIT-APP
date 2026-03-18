@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import { Code, Cpu, Globe, ChevronLeft } from "lucide-react"; // เพิ่ม ChevronLeft // ใช้ไอคอนสื่อความหมาย
-
+import toast from "react-hot-toast";
 export default function SelectMajor() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -31,7 +31,7 @@ export default function SelectMajor() {
       .eq("id", user.id);
 
     if (error) {
-      alert("Error: " + error.message);
+      toast.error("Error: " + error.message);
       setLoading(false);
     } else {
       // 🎉 เสร็จสิ้นกระบวนการ! ไปหน้าแรกกันเลย

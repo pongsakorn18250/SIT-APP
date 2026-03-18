@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import { 
   ArrowLeft, MessageSquare, Calendar, Users, 
   Crown, Send, Trash2, CheckCircle, X, Clock, MapPin, 
@@ -45,7 +46,7 @@ export default function ClubBoard() {
 
     const { data: memberData } = await supabase.from('club_members').select('club_id, role, status').eq('user_id', user.id).single();
     if (!memberData || memberData.status !== 'approved') {
-      alert("คุณยังไม่ได้เป็นสมาชิกชมรมใดเลย!");
+      toast.error("คุณยังไม่ได้เป็นสมาชิกชมรมใดเลย!");
       router.push("/");
       return;
     }
@@ -146,7 +147,7 @@ export default function ClubBoard() {
   const handleSendReminder = async (meeting) => {
       if(!confirm(`ส่งแจ้งเตือนเตือนความจำนัดหมาย "${meeting.title}" ไปหาสมาชิกทุกคนไหม?`)) return;
       await notifyClubMembers('⏰ Meeting Reminder!', `Don't forget: ${meeting.title} is starting soon at ${meeting.location || 'TBA'}!`, 'event');
-      alert("ส่งการแจ้งเตือนเตือนความจำสำเร็จ!");
+      toast.success("ส่งการแจ้งเตือนเตือนความจำสำเร็จ!");
   };
 
   // ==================== MANAGE ACTIONS ====================

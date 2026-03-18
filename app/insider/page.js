@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase"; 
 import { useRouter } from "next/navigation";
 import PageSkeleton from "../../components/PageSkeleton";
+import toast from "react-hot-toast";
 import { 
     Building2, Calendar, Users, MapPin, Clock, 
     Briefcase, ArrowRight, Loader2, Trophy, CheckCircle, PlusCircle, X
@@ -64,7 +65,7 @@ export default function SITInsider() {
       const { error } = await supabase.from('event_participants').insert({ event_id: eventId, user_id: user.id });
       if (!error) {
           setJoinedEvents(prev => ({ ...prev, [eventId]: 'pending' }));
-          alert("ส่งคำขอเข้าร่วมแล้ว! รอ Admin อนุมัติเพื่อรับชั่วโมงกิจกรรม ⏳");
+          toast.success("ส่งคำขอเข้าร่วมแล้ว! รอ Admin อนุมัติเพื่อรับชั่วโมงกิจกรรม ⏳");
       }
   };
 
@@ -74,14 +75,14 @@ export default function SITInsider() {
       const hasJoinedAnyClub = Object.keys(joinedClubs).length > 0;
       
       if (hasJoinedAnyClub) {
-          alert("คุณสามารถเข้าร่วมได้เพียง 1 ชมรมเท่านั้น!");
+          toast.error("คุณสามารถเข้าร่วมได้เพียง 1 ชมรมเท่านั้น!");
           return;
       }
 
       const { error } = await supabase.from('club_members').insert({ club_id: clubId, user_id: user.id });
       if (!error) {
           setJoinedClubs({ [clubId]: 'pending' });
-          alert("ส่งคำขอเข้าชมรมแล้ว! รอประธาน/Admin อนุมัติ ⏳");
+          toast.success("ส่งคำขอเข้าชมรมแล้ว! รอประธาน/Admin อนุมัติ ⏳");
           
           // 🌟 ยิง Noti หา "ประธานชมรม" ของชมรมนี้
           const { data: president } = await supabase
@@ -130,10 +131,10 @@ export default function SITInsider() {
 
       if (!error) {
           setJoinedClubs({}); // ล้างข้อมูลชมรมออก (ตอนนี้กลายเป็นคนไร้สังกัดแล้ว)
-          alert("ดำเนินการเรียบร้อยแล้ว!");
+          toast.success("ดำเนินการเรียบร้อยแล้ว!");
           setSelectedClub(null); // ปิดหน้าต่าง Modal
       } else {
-          alert("เกิดข้อผิดพลาด: " + error.message);
+          toast.error("เกิดข้อผิดพลาด: " + error.message);
       }
   };
 
@@ -253,7 +254,7 @@ export default function SITInsider() {
                     <h2 className="text-xl font-bold mb-1">SIT Electives & Certs</h2>
                     <p className="text-sm text-blue-100 opacity-90">Find easy-A subjects and free certifications.</p>
                 </div>
-                <button onClick={() => alert("Coming Soon! 🚀")} className="bg-white text-blue-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-blue-50 transition-colors">
+                <button onClick={() => toast.success("Coming Soon! 🚀")} className="bg-white text-blue-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-blue-50 transition-colors">
                     Explore
                 </button>
             </div>

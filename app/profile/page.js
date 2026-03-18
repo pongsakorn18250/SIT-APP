@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import PageSkeleton from "../../components/PageSkeleton";
+import toast from "react-hot-toast";
 import { 
   Trophy, BookOpen, X, Edit3, CheckCircle, Crown, 
   ChevronRight, Star, FileText, Calendar, Filter
@@ -145,11 +146,11 @@ export default function ProfilePage() {
 
   // --- ACTIONS ---
   const handleSaveProfile = async () => {
-    if (!editName.trim()) return alert("Name cannot be empty!");
+    if (!editName.trim()) return toast.error("Name cannot be empty!");
     setLoading(true);
     const { error } = await supabase.from("profiles").update({ first_name: editName, avatar: selectedAvatar }).eq("id", profile.id);
     if (!error) window.location.reload(); 
-    else alert("Error: " + error.message);
+    else toast.error("Error: " + error.message);
     setLoading(false);
   };
 
