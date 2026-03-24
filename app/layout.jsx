@@ -4,6 +4,20 @@ import FloatingNoti from"../components/FloatingNoti";
 import MiniProfile from "../components/MiniProfile"; 
 import { Toaster } from 'react-hot-toast';
 
+export const viewport = {
+  themeColor: "#ffffff",
+};
+
+export const metadata = {
+  title: "SIT App",
+  description: "SIT Student Portal",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "SIT App",
+  },
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
