@@ -79,7 +79,7 @@ const ecosystemTabsData = [
   {
     id: 'lostAndFound', title: 'Lost & Found Hub', icon: '🔍', headline: 'Centralized Lost & Found Feed.',
     description: 'ศูนย์กลางประกาศตามหาของหายและส่งคืนสิ่งของภายในคณะ ช่วยให้ชาว SIT ได้ของคืนอย่างรวดเร็ว',
-    accentColor: 'text-orange-500', hoverBg: 'hover:bg-orange-50', images: ['/showcase/lost-mockup.jpg', '/showcase/lost2-mockup.jpg'],
+    accentColor: 'text-orange-500', hoverBg: 'hover:bg-orange-50', images: ['/showcase/Lost-mockup.jpg', '/showcase/Lost2-mockup.jpg'],
   },
 ];
 
